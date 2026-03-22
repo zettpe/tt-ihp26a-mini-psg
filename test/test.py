@@ -53,15 +53,6 @@ def miso_oe(dut):
 def read_phase_value(dut):
     return (dut.uo_out.value.to_unsigned() >> 1) & 1
 
-
-def ctrl_top(dut):
-    return dut.user_project_u.mini_psg_top_u.mini_psg_control_top_u
-
-
-def reg_file(dut):
-    return ctrl_top(dut).register_file_u
-
-
 def byte_to_bits(value):
     return [((value >> bit_index) & 1) for bit_index in range(7, -1, -1)]
 
@@ -291,9 +282,6 @@ async def test_reset_defaults_and_spi_readback(dut):
 
     assert dut.uo_out.value.to_unsigned() == 0
     assert dut.uio_oe.value.to_unsigned() == 0
-    assert reg_file(dut).note_a_reg.value.to_unsigned() == 0x0F
-    assert reg_file(dut).note_b_reg.value.to_unsigned() == 0x0F
-    assert reg_file(dut).envelope_period_reg.value.to_unsigned() == 0x10
 
     expected_defaults = {
         REG_CONTROL: 0x00,
@@ -368,7 +356,6 @@ async def test_spi_write_readback_and_invalid_commands(dut):
 
     _, status_result, _ = await spi_read_reg(dut, REG_STATUS)
     assert status_result["response"] == 0x04
-    assert int(reg_file(dut).write_seen_reg.value) == 1
 
     _, unmapped_result, _ = await spi_read_reg(dut, UNMAPPED_ADDRESS)
     assert unmapped_result["response"] == 0x00
@@ -418,7 +405,8 @@ async def test_soft_reset_clears_written_registers(dut):
     await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0D)
     await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x02)
 
-    assert int(reg_file(dut).write_seen_reg.value) == 1
+    _, status_result, _ = await spi_read_reg(dut, REG_STATUS)
+    assert status_result["response"] == 0x04
 
     await spi_write_reg(dut, REG_CONTROL, 0x03)
     await ClockCycles(dut.clk, 4)
