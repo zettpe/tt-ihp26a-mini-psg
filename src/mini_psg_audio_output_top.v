@@ -6,8 +6,9 @@
  * Audio output path wrapper
  *
  * Applies the selected channel volume or the shared envelope level, mixes
- * both channels and drives the 1 bit audio output. Hard mute gates the
- * output pin at once and clears the DAC state through a synchronized copy.
+ * both channels and drives the 1 bit audio output. Hard mute is
+ * synchronized into clk_i before it clears the DAC state or gates the
+ * output pin.
  */
 
 `default_nettype none
@@ -35,8 +36,8 @@ module mini_psg_audio_output_top (
   wire              hard_mute_sync = hard_mute_sync_q[1];
   wire              dac_clear = clear_enable_i || !audio_enable_i || hard_mute_sync;
 
-  // Synchronize hard mute for the internal DAC clear path while the top pin
-  // still uses the raw mute input for an immediate mute response
+  // Synchronize hard mute so the DAC clear path and the top audio pin both
+  // stay inside the clk_i domain
   always @(posedge clk_i or negedge rst_ni) begin : hard_mute_sync_ff
     if (!rst_ni) begin
       hard_mute_sync_q <= 2'b00;
@@ -78,7 +79,7 @@ module mini_psg_audio_output_top (
     .audio_o       (audio_raw)
   );
 
-  // Gate the output pin with hard mute and audio enable
-  assign audio_o = (hard_mute_i || !audio_enable_i) ? 1'b0 : audio_raw;
+  // Gate the output pin with synchronized hard mute and audio enable
+  assign audio_o = (hard_mute_sync || !audio_enable_i) ? 1'b0 : audio_raw;
 
 endmodule // mini_psg_audio_output_top
