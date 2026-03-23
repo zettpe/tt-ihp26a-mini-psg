@@ -1,8 +1,8 @@
 ## How it works
 
-This chip implements a simple retro-inspired programmable sound generator. It provides two tone channels, a shared `3` bit envelope and a `1` bit audio output. Control data is written through a write-only SPI connection that uses `SPI_CS_N`, `SPI_MOSI` and `SPI_SCK`.
+Mini PSG is a retro inspired programmable sound generator. It has two tone channels, a shared `3` bit envelope and a `1` bit audio output. SPI writes set the control registers through `SPI_CS_N`, `SPI_MOSI` and `SPI_SCK`.
 
-Tone generation uses a `23` bit phase accumulator for each channel. The phase value sets the pitch and drives the selected waveform. The shared envelope can be applied to either channel to shape its level.
+Each channel uses a `23` bit phase accumulator. The phase value sets the pitch and drives the selected waveform. The shared envelope shapes the level of either channel.
 
 ### Pin connections
 
@@ -101,21 +101,11 @@ Envelope mode select:
 Lower values give a faster envelope. Higher values give a slower
 envelope.
 
-### SPI transfer and timing
-
-- project clock: `25_000_000 Hz`
-- one SPI frame contains one command byte followed by one data byte
-- keep `CS_N` low during the frame
-- keep `SCK` low and high for at least `4` clock cycles each
-- take `CS_N` low at least `4` clock cycles before the first `SCK` rising edge
-- keep `CS_N` low at least `4` clock cycles after the last `SCK` falling edge
-- keep `CS_N` high at least `4` clock cycles between frames
-
 ## How to test
 
 A cocotb testbench is provided in `test/`
 
-It can be executed with:
+Run it with:
 
 ```sh
 make -C test -B
@@ -123,6 +113,6 @@ make -C test -B
 
 ## External hardware
 
-- a Tiny Tapeout demo board, or another board that provides power and the project clock
+- a Tiny Tapeout demo board or another board that provides power and the project clock
 - an SPI master connected to `SPI_CS_N`, `SPI_MOSI` and `SPI_SCK`
-- for audio, use the TT Audio Pmod, or use a simple low-pass RC filter followed by an amplifier and speakers or headphones
+- for audio use the TT Audio Pmod or use a simple low pass RC filter followed by an amplifier and speakers or headphones
