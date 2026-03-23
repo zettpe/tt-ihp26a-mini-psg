@@ -11,8 +11,8 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Stores the register values used in the current build
-// Unmapped addresses ignore writes and read back as 0
+// Store register values
+// Unmapped addresses return all 0s
 module register_file (
   input  wire       clk_i,
   input  wire       rst_ni,
@@ -20,7 +20,16 @@ module register_file (
   input  wire [3:0] write_address_i,
   input  wire [7:0] write_data_i,
   input  wire [3:0] read_address_i,
-  output reg  [7:0] read_data_o
+  output reg  [7:0] read_data_o,
+  output wire [7:0] control_value_o,
+  output wire [7:0] note_a_value_o,
+  output wire [7:0] channel_a_control_value_o,
+  output wire [7:0] note_b_value_o,
+  output wire [7:0] channel_b_control_value_o,
+  output wire [7:0] volume_ab_value_o,
+  output wire [7:0] noise_control_value_o,
+  output wire [7:0] envelope_control_value_o,
+  output wire [7:0] envelope_period_value_o
 );
 
   // Register addresses
@@ -36,7 +45,7 @@ module register_file (
   localparam [3:0] ADDR_STATUS = 4'h9;
   localparam [3:0] ADDR_ID = 4'ha;
 
-  // ENVELOPE_CONTROL bits used in this build
+  // ENVELOPE_CONTROL bits used now
   localparam integer ENVELOPE_MODE_LSB = 0;
   localparam integer ENVELOPE_MODE_MSB = 1;
   localparam integer ENVELOPE_ENABLE_A_BIT = 3;
@@ -65,6 +74,16 @@ module register_file (
   // STATUS[2] shows that one valid write has been accepted
   reg       write_seen_reg;
 
+  assign control_value_o = control_reg;
+  assign note_a_value_o = note_a_reg;
+  assign channel_a_control_value_o = channel_a_control_reg;
+  assign note_b_value_o = note_b_reg;
+  assign channel_b_control_value_o = channel_b_control_reg;
+  assign volume_ab_value_o = volume_ab_reg;
+  assign noise_control_value_o = noise_control_reg;
+  assign envelope_control_value_o = envelope_control_reg;
+  assign envelope_period_value_o = envelope_period_reg;
+
   // Store one addressed register byte on each accepted write
   always @(posedge clk_i or negedge rst_ni) begin : registers_ff
     if (!rst_ni) begin
@@ -84,8 +103,8 @@ module register_file (
 
         case (write_address_i)
           ADDR_CONTROL: begin
-            // Store CONTROL[2] and CONTROL[0] and keep CONTROL[1] at 0
-            control_reg <= {5'b00000, write_data_i[2], 1'b0, write_data_i[0]};
+            // Store CONTROL[0] and keep the pulse bit at 0
+            control_reg <= {7'b0000000, write_data_i[0]};
 
             if (write_data_i[1]) begin
               // CONTROL[1] clears the stored register state
@@ -120,7 +139,7 @@ module register_file (
             noise_control_reg <= write_data_i;
           end
           ADDR_ENVELOPE_CONTROL: begin
-            // Keep ENVELOPE_CONTROL[2] at 0 in this build
+            // Keep ENVELOPE_CONTROL[2] at 0
             envelope_control_reg <= {
               3'b000,
               write_data_i[ENVELOPE_ENABLE_B_BIT],

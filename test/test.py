@@ -5,19 +5,22 @@ import random
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, ReadOnly, Timer
+from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge, Timer
 
 
+# Clock and SPI timing used by the checks
 CLK_PERIOD_NS = 40
 SPI_MIN_HALF_PERIOD_CYCLES = 4
 SPI_MIN_HALF_PERIOD_NS = CLK_PERIOD_NS * SPI_MIN_HALF_PERIOD_CYCLES
 SPI_MIN_FRAME_GAP_NS = SPI_MIN_HALF_PERIOD_NS
 
+# SPI pin positions on the shared port
 SPI_CS_BIT = 0
 SPI_MOSI_BIT = 1
 SPI_MISO_BIT = 2
 SPI_SCK_BIT = 3
 
+# Register addresses
 REG_CONTROL = 0x0
 REG_NOTE_A = 0x1
 REG_CHANNEL_A_CONTROL = 0x2
@@ -34,6 +37,7 @@ UNMAPPED_ADDRESS = 0xF
 ALL_REG_ADDRESSES = tuple(range(REG_ID + 1))
 
 
+# Small pin helpers
 def set_spi_lines(dut, cs_n=1, sck=0, mosi=0):
     value = 0
     value |= (cs_n & 1) << SPI_CS_BIT
@@ -52,6 +56,89 @@ def miso_oe(dut):
 
 def read_phase_value(dut):
     return (dut.uo_out.value.to_unsigned() >> 1) & 1
+
+
+def audio_value(dut):
+    return (dut.uo_out.value.to_unsigned() >> 7) & 1
+
+
+def channel_a_debug_value(dut):
+    return (dut.uo_out.value.to_unsigned() >> 6) & 1
+
+
+def saturation_value(dut):
+    return dut.uo_out.value.to_unsigned() & 1
+
+
+# Internal hierarchy helpers for RTL only checks
+def psg_top(dut):
+    return dut.user_project_u.mini_psg_top_u
+
+
+def ctrl_top(dut):
+    return psg_top(dut).mini_psg_control_top_u
+
+
+def audio_top(dut):
+    return psg_top(dut).mini_psg_audio_top_u
+
+
+def gen_top(dut):
+    return audio_top(dut).mini_psg_audio_generator_top_u
+
+
+def out_top(dut):
+    return audio_top(dut).mini_psg_audio_output_top_u
+
+
+def reg_file(dut):
+    return ctrl_top(dut).register_file_u
+
+
+def spi_slave_block(dut):
+    return ctrl_top(dut).spi_slave_u
+
+
+def note_lut_a(dut):
+    return gen_top(dut).note_lut_a_u
+
+
+def phase_accumulator_a(dut):
+    return gen_top(dut).phase_accumulator_a_u
+
+
+def waveform_a(dut):
+    return gen_top(dut).waveform_generator_a_u
+
+
+def noise_block(dut):
+    return gen_top(dut).noise_generator_u
+
+
+def envelope_block(dut):
+    return gen_top(dut).envelope_generator_u
+
+
+def volume_a(dut):
+    return out_top(dut).volume_control_a_u
+
+
+def mixer_block(dut):
+    return out_top(dut).mixer_u
+
+
+def dac_block(dut):
+    return out_top(dut).dac_1bit_u
+
+
+def audio_hierarchy_is_visible(dut):
+    try:
+        _ = gen_top(dut)
+        _ = out_top(dut)
+        return True
+    except AttributeError:
+        return False
+
 
 def byte_to_bits(value):
     return [((value >> bit_index) & 1) for bit_index in range(7, -1, -1)]
@@ -76,7 +163,8 @@ def sample_phase_flags(dut, phase_flags):
     phase_flags["read_phase_seen"] |= bool(read_phase_value(dut))
 
 
-def new_reg_model():
+# Expected register state for legal SPI traffic
+def new_reg_state():
     return {
         REG_CONTROL: 0x00,
         REG_NOTE_A: 0x0F,
@@ -91,40 +179,86 @@ def new_reg_model():
     }
 
 
-def model_write(model, address, data):
-    model["write_seen"] = 1
+def apply_reg_write(reg_state, address, data):
+    reg_state["write_seen"] = 1
 
     if address == REG_CONTROL:
-        model[REG_CONTROL] = ((data & 0x04) | (data & 0x01))
+        reg_state[REG_CONTROL] = data & 0x01
 
         if data & 0x02:
-            model.update(new_reg_model())
+            reg_state.update(new_reg_state())
     elif address == REG_NOTE_A:
-        model[REG_NOTE_A] = data & 0xFF
+        reg_state[REG_NOTE_A] = data & 0xFF
     elif address == REG_CHANNEL_A_CONTROL:
-        model[REG_CHANNEL_A_CONTROL] = data & 0xFF
+        reg_state[REG_CHANNEL_A_CONTROL] = data & 0xFF
     elif address == REG_NOTE_B:
-        model[REG_NOTE_B] = data & 0xFF
+        reg_state[REG_NOTE_B] = data & 0xFF
     elif address == REG_CHANNEL_B_CONTROL:
-        model[REG_CHANNEL_B_CONTROL] = data & 0xFF
+        reg_state[REG_CHANNEL_B_CONTROL] = data & 0xFF
     elif address == REG_VOLUME_AB:
-        model[REG_VOLUME_AB] = data & 0xFF
+        reg_state[REG_VOLUME_AB] = data & 0xFF
     elif address == REG_NOISE_CONTROL:
-        model[REG_NOISE_CONTROL] = data & 0xFF
+        reg_state[REG_NOISE_CONTROL] = data & 0xFF
     elif address == REG_ENVELOPE_CONTROL:
-        model[REG_ENVELOPE_CONTROL] = data & 0x1B
+        reg_state[REG_ENVELOPE_CONTROL] = data & 0x1B
     elif address == REG_ENVELOPE_PERIOD:
-        model[REG_ENVELOPE_PERIOD] = data & 0xFF
+        reg_state[REG_ENVELOPE_PERIOD] = data & 0xFF
 
 
-def model_read(model, address):
+def read_reg_state(reg_state, address):
     if address == REG_STATUS:
-        return 0x04 if model["write_seen"] else 0x00
+        return 0x04 if reg_state["write_seen"] else 0x00
 
     if address == REG_ID:
         return 0xDF
 
-    return model.get(address, 0x00)
+    return reg_state.get(address, 0x00)
+
+
+def scale_sample_level(sample_value, level_value):
+    if level_value == 0x0:
+        return 0
+    if level_value == 0x1:
+        return sample_value >> 4
+    if level_value == 0x2:
+        return sample_value >> 3
+    if level_value == 0x3:
+        return (sample_value >> 3) + (sample_value >> 4)
+    if level_value == 0x4:
+        return sample_value >> 2
+    if level_value == 0x5:
+        return (sample_value >> 2) + (sample_value >> 4)
+    if level_value == 0x6:
+        return (sample_value >> 2) + (sample_value >> 3)
+    if level_value == 0x7:
+        return (sample_value >> 2) + (sample_value >> 3) + (sample_value >> 4)
+    if level_value == 0x8:
+        return sample_value >> 1
+    if level_value == 0x9:
+        return (sample_value >> 1) + (sample_value >> 4)
+    if level_value == 0xA:
+        return (sample_value >> 1) + (sample_value >> 3)
+    if level_value == 0xB:
+        return (sample_value >> 1) + (sample_value >> 3) + (sample_value >> 4)
+    if level_value == 0xC:
+        return (sample_value >> 1) + (sample_value >> 2)
+    if level_value == 0xD:
+        return (sample_value >> 1) + (sample_value >> 2) + (sample_value >> 4)
+    if level_value == 0xE:
+        return (sample_value >> 1) + (sample_value >> 2) + (sample_value >> 3)
+    if level_value == 0xF:
+        return sample_value
+    return 0
+
+
+def saturate_mixed_sample(channel_a_value, channel_b_value):
+    mixed_value = channel_a_value + channel_b_value
+
+    if mixed_value > 255:
+        return 255, 1
+    if mixed_value < -256:
+        return -256, 1
+    return mixed_value, 0
 
 
 async def start_test_clock(dut):
@@ -144,6 +278,11 @@ async def apply_reset(dut):
 async def wait_ns_if_needed(delay_ns):
     if delay_ns > 0:
         await Timer(delay_ns, unit="ns")
+
+
+async def set_ui_value(dut, value):
+    dut.ui_in.value = value & 0xFF
+    await ClockCycles(dut.clk, 1)
 
 
 async def spi_shift_bits_timed(dut, bit_values, cs_n, half_period_ns):
@@ -255,6 +394,26 @@ async def spi_read_reg(dut, address, half_period_ns=SPI_MIN_HALF_PERIOD_NS):
     )
 
 
+async def set_channel_a(dut, note_value, control_value, volume_value):
+    await spi_write_reg(dut, REG_NOTE_A, note_value)
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, control_value)
+    await spi_write_reg(dut, REG_VOLUME_AB, volume_value)
+
+
+async def set_channel_b(dut, note_value, control_value):
+    await spi_write_reg(dut, REG_NOTE_B, note_value)
+    await spi_write_reg(dut, REG_CHANNEL_B_CONTROL, control_value)
+
+
+async def wait_for_condition(dut, condition, max_cycles=512):
+    for _ in range(max_cycles):
+        await RisingEdge(dut.clk)
+        if condition():
+            return
+
+    raise AssertionError("condition was not met within the expected time")
+
+
 async def drive_idle_bus_activity(
     dut,
     byte_values,
@@ -275,6 +434,7 @@ async def drive_idle_bus_activity(
     return phase_flags
 
 
+# SPI register checks that stay valid at the chip pins
 @cocotb.test()
 async def test_reset_defaults_and_spi_readback(dut):
     await start_test_clock(dut)
@@ -337,7 +497,7 @@ async def test_spi_write_readback_and_invalid_commands(dut):
     await spi_write_reg(dut, UNMAPPED_ADDRESS, 0x55)
 
     for address, expected_value in (
-        (REG_CONTROL, 0x05),
+        (REG_CONTROL, 0x01),
         (REG_NOTE_A, 0x10),
         (REG_CHANNEL_A_CONTROL, 0x24),
         (REG_NOTE_B, 0x33),
@@ -374,7 +534,7 @@ async def test_spi_write_readback_and_invalid_commands(dut):
     assert not frame_flags["miso_oe_after_cs"]
 
     _, control_result, _ = await spi_read_reg(dut, REG_CONTROL)
-    assert control_result["response"] == 0x05
+    assert control_result["response"] == 0x01
 
     command_result, data_result, frame_flags = await spi_raw_transaction_timed(
         dut,
@@ -427,6 +587,434 @@ async def test_soft_reset_clears_written_registers(dut):
         assert data_result["response"] == expected_value
 
     assert dut.uo_out.value.to_unsigned() == 0
+
+
+# Audio path checks
+@cocotb.test()
+async def test_audio_output_and_debug_pins_follow_register_writes(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+    await set_channel_a(dut, note_value=0x7B, control_value=0x24, volume_value=0x0F)
+
+    audio_values = []
+    debug_values = []
+    for _ in range(256):
+        await RisingEdge(dut.clk)
+        audio_values.append(audio_value(dut))
+        debug_values.append(channel_a_debug_value(dut))
+
+    assert len(set(audio_values)) > 1
+    assert any(debug_values)
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x04)
+    await ClockCycles(dut.clk, 4)
+    assert channel_a_debug_value(dut) == 0
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x2C)
+    await spi_write_reg(dut, REG_NOISE_CONTROL, 0x03)
+    noise_debug_values = []
+    for _ in range(128):
+        await RisingEdge(dut.clk)
+        noise_debug_values.append((dut.uo_out.value.to_unsigned() >> 4) & 1)
+    assert len(set(noise_debug_values)) > 1
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x3C)
+    await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x02)
+    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0D)
+    envelope_debug_values = []
+    for _ in range(128):
+        await RisingEdge(dut.clk)
+        envelope_debug_values.append((dut.uo_out.value.to_unsigned() >> 3) & 1)
+    assert len(set(envelope_debug_values)) > 1
+
+    await set_ui_value(dut, 0x01)
+    await ClockCycles(dut.clk, 4)
+    assert audio_value(dut) == 0
+
+
+@cocotb.test()
+async def test_note_path_gate_and_rest_are_cleanly_muted(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+    await set_channel_a(dut, note_value=0x10, control_value=0x24, volume_value=0x0F)
+
+    expected_step = 22 << 1
+    assert gen_top(dut).channel_a_phase_step.value.to_unsigned() == expected_step
+
+    phase_before = gen_top(dut).channel_a_phase_value.value.to_unsigned()
+    await ClockCycles(dut.clk, 4)
+    phase_after = gen_top(dut).channel_a_phase_value.value.to_unsigned()
+    assert int(gen_top(dut).channel_a_tone_enable_o.value) == 1
+    assert phase_after != phase_before
+    assert gen_top(dut).channel_a_wave_sample.value.to_signed() != 0
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x04)
+    frozen_phase = gen_top(dut).channel_a_phase_value.value.to_unsigned()
+    await ClockCycles(dut.clk, 4)
+    assert gen_top(dut).channel_a_phase_value.value.to_unsigned() == frozen_phase
+    assert gen_top(dut).channel_a_source_sample_o.value.to_signed() == 0
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x20)
+    await ClockCycles(dut.clk, 2)
+    assert gen_top(dut).channel_a_source_sample_o.value.to_signed() == 0
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x0F)
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
+    await ClockCycles(dut.clk, 2)
+    assert gen_top(dut).channel_a_phase_step.value.to_unsigned() == 0
+    assert gen_top(dut).channel_a_source_sample_o.value.to_signed() == 0
+
+
+@cocotb.test()
+async def test_control_outputs_follow_register_writes(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+    await ClockCycles(dut.clk, 2)
+    assert int(ctrl_top(dut).audio_enable_o.value) == 1
+    assert reg_file(dut).control_reg.value.to_unsigned() == 0x01
+
+    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0D)
+    await RisingEdge(dut.clk)
+    assert int(ctrl_top(dut).envelope_restart_pulse_o.value) == 0
+    assert reg_file(dut).envelope_control_reg.value.to_unsigned() == 0x09
+
+    await spi_write_reg(dut, REG_CONTROL, 0x03)
+    await ClockCycles(dut.clk, 2)
+    assert int(ctrl_top(dut).audio_enable_o.value) == 0
+    assert reg_file(dut).control_reg.value.to_unsigned() == 0x00
+
+
+@cocotb.test()
+async def test_note_lut_and_phase_accumulator_values(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x00)
+    await ClockCycles(dut.clk, 2)
+    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 22
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x10)
+    await ClockCycles(dut.clk, 2)
+    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 44
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x2B)
+    await ClockCycles(dut.clk, 2)
+    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == (41 << 2)
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x8F)
+    await ClockCycles(dut.clk, 2)
+    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 0
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x10)
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
+    await ClockCycles(dut.clk, 2)
+    assert phase_accumulator_a(dut).phase_value_o.value.to_unsigned() == 0
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+    phase_values = []
+    for _ in range(5):
+        await RisingEdge(dut.clk)
+        phase_values.append(phase_accumulator_a(dut).phase_value_o.value.to_unsigned())
+    phase_steps = [right - left for left, right in zip(phase_values, phase_values[1:])]
+    assert phase_steps == [44, 44, 44, 44]
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x04)
+    frozen_phase = phase_accumulator_a(dut).phase_value_o.value.to_unsigned()
+    await ClockCycles(dut.clk, 4)
+    assert phase_accumulator_a(dut).phase_value_o.value.to_unsigned() == frozen_phase
+
+    await spi_write_reg(dut, REG_CONTROL, 0x03)
+    await ClockCycles(dut.clk, 2)
+    assert phase_accumulator_a(dut).phase_value_o.value.to_unsigned() == 0
+
+
+@cocotb.test()
+async def test_waveform_generator_builds_all_shapes(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+
+    square_samples = []
+    for _ in range(4096):
+        await RisingEdge(dut.clk)
+        square_samples.append(waveform_a(dut).sample_out_o.value.to_signed())
+    assert set(square_samples) == {-96, 96}
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x25)
+    pulse_samples = []
+    for _ in range(4096):
+        await RisingEdge(dut.clk)
+        pulse_samples.append(waveform_a(dut).sample_out_o.value.to_signed())
+    assert set(pulse_samples) == {-96, 96}
+    assert pulse_samples.count(-96) > pulse_samples.count(96)
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x26)
+    saw_samples = []
+    for _ in range(4096):
+        await RisingEdge(dut.clk)
+        saw_samples.append(waveform_a(dut).sample_out_o.value.to_signed())
+    assert len(set(saw_samples)) > 16
+    assert max(saw_samples) > 0
+    assert min(saw_samples) < 0
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x27)
+    triangle_samples = []
+    for _ in range(4096):
+        await RisingEdge(dut.clk)
+        triangle_samples.append(waveform_a(dut).sample_out_o.value.to_signed())
+    assert max(triangle_samples) >= 60
+    assert min(triangle_samples) <= -60
+
+
+@cocotb.test()
+async def test_noise_generator_enable_clear_and_disable(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x28)
+    await spi_write_reg(dut, REG_NOISE_CONTROL, 0x03)
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+
+    noise_bits = []
+    noise_samples = []
+    for _ in range(128):
+        await RisingEdge(dut.clk)
+        noise_bits.append(int(noise_block(dut).noise_bit_o.value))
+        noise_samples.append(noise_block(dut).noise_sample_o.value.to_signed())
+
+    assert len(set(noise_bits)) > 1
+    assert any(value != 0 for value in noise_samples)
+
+    await spi_write_reg(dut, REG_NOISE_CONTROL, 0x00)
+    await ClockCycles(dut.clk, 4)
+    assert int(gen_top(dut).channel_a_noise_enable_o.value) == 0
+    assert noise_block(dut).noise_sample_o.value.to_signed() == 0
+
+    await spi_write_reg(dut, REG_CONTROL, 0x03)
+    await ClockCycles(dut.clk, 2)
+    assert noise_block(dut).lfsr_reg.value.to_unsigned() == 0x0001
+    assert noise_block(dut).divider_reg.value.to_unsigned() == 3
+
+
+@cocotb.test()
+async def test_envelope_generator_modes_and_restart(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+    await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x01)
+
+    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0C)
+    hold_levels = []
+    for _ in range(8):
+        await RisingEdge(dut.clk)
+        hold_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
+    assert hold_levels == [0xF] * 8
+
+    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0D)
+    decay_levels = []
+    for _ in range(8):
+        await RisingEdge(dut.clk)
+        decay_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
+    assert decay_levels[0] >= decay_levels[-1]
+    assert all(left >= right for left, right in zip(decay_levels, decay_levels[1:]))
+    assert decay_levels[-1] < 0xF
+
+    await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x01)
+    rise_fall_write = cocotb.start_soon(spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0E))
+    rise_fall_levels = []
+    for _ in range(256):
+        await RisingEdge(dut.clk)
+        rise_fall_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
+    await rise_fall_write
+    rise_fall_start = rise_fall_levels.index(min(rise_fall_levels))
+    rise_fall_tail = rise_fall_levels[rise_fall_start:]
+    rise_fall_steps = [right - left for left, right in zip(rise_fall_tail, rise_fall_tail[1:])]
+    assert max(rise_fall_tail) > min(rise_fall_tail)
+    assert any(step > 0 for step in rise_fall_steps)
+    assert any(step < 0 for step in rise_fall_steps)
+
+    loop_write = cocotb.start_soon(spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0F))
+    loop_levels = []
+    for _ in range(320):
+        await RisingEdge(dut.clk)
+        loop_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
+    await loop_write
+    loop_start = loop_levels.index(min(loop_levels))
+    loop_tail = loop_levels[loop_start:]
+    level_steps = [right - left for left, right in zip(loop_tail, loop_tail[1:])]
+    assert min(loop_tail) == 0
+    assert max(loop_tail) == 0xF
+    assert any(step > 0 for step in level_steps)
+    assert any(step < 0 for step in level_steps)
+
+
+@cocotb.test()
+async def test_volume_control_and_mixer_follow_levels(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
+    await spi_write_reg(dut, REG_VOLUME_AB, 0x05)
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+
+    for _ in range(32):
+        await RisingEdge(dut.clk)
+        channel_a_source = gen_top(dut).channel_a_source_sample_o.value.to_signed()
+        channel_a_scaled = out_top(dut).channel_a_scaled_sample.value.to_signed()
+        mixed_sample = mixer_block(dut).mixed_sample_o.value.to_signed()
+        saturation_flag = int(mixer_block(dut).saturation_flag_o.value)
+        expected_scaled = scale_sample_level(channel_a_source, 0x5)
+        expected_mixed, expected_saturation = saturate_mixed_sample(expected_scaled, 0)
+        assert channel_a_scaled == expected_scaled
+        assert mixed_sample == expected_mixed
+        assert saturation_flag == expected_saturation
+
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x34)
+    await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x01)
+    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0D)
+
+    for _ in range(16):
+        await RisingEdge(dut.clk)
+        channel_a_source = gen_top(dut).channel_a_source_sample_o.value.to_signed()
+        envelope_level = envelope_block(dut).envelope_level_o.value.to_unsigned()
+        channel_a_scaled = volume_a(dut).sample_out_o.value.to_signed()
+        assert channel_a_scaled == scale_sample_level(channel_a_source, envelope_level)
+
+    await apply_reset(dut)
+    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x2C)
+    await spi_write_reg(dut, REG_NOTE_B, 0x7B)
+    await spi_write_reg(dut, REG_CHANNEL_B_CONTROL, 0x2C)
+    await spi_write_reg(dut, REG_VOLUME_AB, 0xFF)
+    await spi_write_reg(dut, REG_NOISE_CONTROL, 0x03)
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+
+    await wait_for_condition(
+        dut,
+        lambda: int(mixer_block(dut).saturation_flag_o.value) == 1 and
+        mixer_block(dut).mixed_sample_o.value.to_signed() == 255,
+        max_cycles=4096,
+    )
+    await wait_for_condition(
+        dut,
+        lambda: int(mixer_block(dut).saturation_flag_o.value) == 1 and
+        mixer_block(dut).mixed_sample_o.value.to_signed() == -256,
+        max_cycles=4096,
+    )
+
+
+@cocotb.test()
+async def test_dac_and_output_block_drive_activity(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
+    await spi_write_reg(dut, REG_VOLUME_AB, 0x0F)
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+
+    raw_audio_values = []
+    top_audio_values = []
+    for _ in range(128):
+        await RisingEdge(dut.clk)
+        raw_audio_values.append(int(dac_block(dut).audio_o.value))
+        top_audio_values.append(audio_value(dut))
+
+    assert len(set(raw_audio_values)) > 1
+    assert len(set(top_audio_values)) > 1
+
+    await set_ui_value(dut, 0x01)
+    await ClockCycles(dut.clk, 4)
+    assert audio_value(dut) == 0
+
+    await set_ui_value(dut, 0x00)
+    await spi_write_reg(dut, REG_CONTROL, 0x03)
+    await ClockCycles(dut.clk, 2)
+    assert audio_value(dut) == 0
+    assert int(ctrl_top(dut).audio_enable_o.value) == 0
+
+
+@cocotb.test()
+async def test_channel_b_envelope_enable_and_hard_mute(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+    await spi_write_reg(dut, REG_NOTE_B, 0x7B)
+    await spi_write_reg(dut, REG_CHANNEL_B_CONTROL, 0x34)
+    await spi_write_reg(dut, REG_VOLUME_AB, 0xF0)
+    await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x20)
+    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x15)
+
+    _, envelope_control_result, _ = await spi_read_reg(dut, REG_ENVELOPE_CONTROL)
+    assert envelope_control_result["response"] == 0x11
+    assert int(gen_top(dut).channel_b_envelope_enable_o.value) == 1
+
+    scaled_samples = []
+    envelope_levels = []
+    for _ in range(128):
+        await RisingEdge(dut.clk)
+        scaled_samples.append(out_top(dut).channel_b_scaled_sample.value.to_signed())
+        envelope_levels.append(audio_top(dut).envelope_level.value.to_unsigned())
+
+    non_zero_scaled = {value for value in scaled_samples if value != 0}
+    assert len(set(envelope_levels)) > 1
+    assert len(non_zero_scaled) > 1
+
+    await set_ui_value(dut, 0x01)
+    await ClockCycles(dut.clk, 4)
+    assert audio_value(dut) == 0
+
+    await set_ui_value(dut, 0x00)
+    await ClockCycles(dut.clk, 4)
+    assert audio_value(dut) in (0, 1)
 
 
 @cocotb.test()
@@ -628,7 +1216,7 @@ async def test_random_legal_spi_traffic_matches_register_model(dut):
     await apply_reset(dut)
 
     rng = random.Random(20260322)
-    reg_model = new_reg_model()
+    reg_state = new_reg_state()
 
     for _ in range(40):
         await wait_ns_if_needed(rng.randrange(0, CLK_PERIOD_NS))
@@ -652,7 +1240,7 @@ async def test_random_legal_spi_traffic_matches_register_model(dut):
             assert not data_result["read_phase_seen"]
             assert not frame_flags["miso_oe_after_cs"]
 
-            model_write(reg_model, address, data)
+            apply_reg_write(reg_state, address, data)
         else:
             address = rng.choice(ALL_REG_ADDRESSES)
             command_result, data_result, frame_flags = await spi_read_reg(
@@ -662,7 +1250,7 @@ async def test_random_legal_spi_traffic_matches_register_model(dut):
             )
 
             assert command_result["response"] == 0x00
-            assert data_result["response"] == model_read(reg_model, address)
+            assert data_result["response"] == read_reg_state(reg_state, address)
             assert not command_result["miso_oe_seen"]
             assert command_result["read_phase_seen"] == 0
             assert data_result["miso_oe_seen"]
@@ -671,4 +1259,4 @@ async def test_random_legal_spi_traffic_matches_register_model(dut):
 
     for address in ALL_REG_ADDRESSES:
         _, data_result, _ = await spi_read_reg(dut, address)
-        assert data_result["response"] == model_read(reg_model, address)
+        assert data_result["response"] == read_reg_state(reg_state, address)

@@ -6,7 +6,7 @@ SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = tt_um_zettpe_mini_psg.v mini_psg_top.v mini_psg_control_top.v spi_slave.v register_file.v
+PROJECT_SOURCES = tt_um_zettpe_mini_psg.v mini_psg_top.v mini_psg_control_top.v mini_psg_audio_top.v mini_psg_audio_generator_top.v mini_psg_audio_output_top.v spi_slave.v register_file.v note_lut.v phase_accumulator.v waveform_generator.v noise_generator.v envelope_generator.v volume_control.v mixer.v dac_1bit.v
 
 ifneq ($(GATES),yes)
 

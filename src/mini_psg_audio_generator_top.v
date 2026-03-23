@@ -2,10 +2,10 @@
 /*
  * File        : mini_psg_audio_generator_top.v
  * Author      : Peter Szentkuti
- * Description : Top block for tone noise and envelope generation
+ * Description : Tone noise and envelope block
  *
  * Builds the channel source samples, the shared noise bit and the
- * envelope level from the stored control values
+ * envelope level from the stored register values
  */
 
 `default_nettype none
@@ -35,8 +35,6 @@ module mini_psg_audio_generator_top (
   output wire              channel_b_envelope_enable_o,
   output wire signed [8:0] channel_a_source_sample_o,
   output wire signed [8:0] channel_b_source_sample_o,
-  output wire              channel_a_phase_debug_o,
-  output wire              channel_b_phase_debug_o,
   output wire              channel_a_wave_debug_o,
   output wire              channel_b_wave_debug_o
 );
@@ -194,8 +192,6 @@ module mini_psg_audio_generator_top (
       $signed({channel_b_noise_sample[7], channel_b_noise_sample});
 
   // Keep simple one bit views for the debug outputs
-  assign channel_a_phase_debug_o = channel_a_phase_value[22];
-  assign channel_b_phase_debug_o = channel_b_phase_value[22];
   assign channel_a_wave_debug_o = channel_a_wave_sample[7];
   assign channel_b_wave_debug_o = channel_b_wave_sample[7];
 
