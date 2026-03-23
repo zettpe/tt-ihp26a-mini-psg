@@ -188,17 +188,17 @@ def apply_reg_write(reg_state, address, data):
         if data & 0x02:
             reg_state.update(new_reg_state())
     elif address == REG_NOTE_A:
-        reg_state[REG_NOTE_A] = data & 0xFF
+        reg_state[REG_NOTE_A] = data & 0x7F
     elif address == REG_CHANNEL_A_CONTROL:
-        reg_state[REG_CHANNEL_A_CONTROL] = data & 0xFF
+        reg_state[REG_CHANNEL_A_CONTROL] = data & 0x3F
     elif address == REG_NOTE_B:
-        reg_state[REG_NOTE_B] = data & 0xFF
+        reg_state[REG_NOTE_B] = data & 0x7F
     elif address == REG_CHANNEL_B_CONTROL:
-        reg_state[REG_CHANNEL_B_CONTROL] = data & 0xFF
+        reg_state[REG_CHANNEL_B_CONTROL] = data & 0x3F
     elif address == REG_VOLUME_AB:
         reg_state[REG_VOLUME_AB] = data & 0xFF
     elif address == REG_NOISE_CONTROL:
-        reg_state[REG_NOISE_CONTROL] = data & 0xFF
+        reg_state[REG_NOISE_CONTROL] = data & 0x0F
     elif address == REG_ENVELOPE_CONTROL:
         reg_state[REG_ENVELOPE_CONTROL] = data & 0x1B
     elif address == REG_ENVELOPE_PERIOD:
@@ -685,17 +685,17 @@ async def test_control_outputs_follow_register_writes(dut):
     await spi_write_reg(dut, REG_CONTROL, 0x01)
     await ClockCycles(dut.clk, 2)
     assert int(ctrl_top(dut).audio_enable_o.value) == 1
-    assert reg_file(dut).control_reg.value.to_unsigned() == 0x01
+    assert int(reg_file(dut).control_reg.value) == 0x01
 
     await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0D)
     await RisingEdge(dut.clk)
     assert int(ctrl_top(dut).envelope_restart_pulse_o.value) == 0
-    assert reg_file(dut).envelope_control_reg.value.to_unsigned() == 0x09
+    assert reg_file(dut).envelope_control_reg.value.to_unsigned() == 0x05
 
     await spi_write_reg(dut, REG_CONTROL, 0x03)
     await ClockCycles(dut.clk, 2)
     assert int(ctrl_top(dut).audio_enable_o.value) == 0
-    assert reg_file(dut).control_reg.value.to_unsigned() == 0x00
+    assert int(reg_file(dut).control_reg.value) == 0x00
 
 
 @cocotb.test()

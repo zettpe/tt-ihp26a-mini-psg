@@ -52,36 +52,43 @@ module register_file (
   localparam integer ENVELOPE_ENABLE_B_BIT = 4;
 
   // Reset values for the stored registers
-  localparam [7:0] DEFAULT_CONTROL_REG = 8'h00;
-  localparam [7:0] DEFAULT_NOTE_REG = 8'h0f;
-  localparam [7:0] DEFAULT_CHANNEL_CONTROL_REG = 8'h00;
+  localparam       DEFAULT_CONTROL_REG = 1'b0;
+  localparam [6:0] DEFAULT_NOTE_REG = 7'h0f;
+  localparam [5:0] DEFAULT_CHANNEL_CONTROL_REG = 6'h00;
   localparam [7:0] DEFAULT_VOLUME_AB_REG = 8'h00;
-  localparam [7:0] DEFAULT_NOISE_CONTROL_REG = 8'h00;
-  localparam [7:0] DEFAULT_ENVELOPE_CONTROL_REG = 8'h00;
+  localparam [3:0] DEFAULT_NOISE_CONTROL_REG = 4'h0;
+  localparam [3:0] DEFAULT_ENVELOPE_CONTROL_REG = 4'h0;
   localparam [7:0] DEFAULT_ENVELOPE_PERIOD_REG = 8'h10;
   localparam [7:0] ID_REG_VALUE = 8'hdf;
 
-  // Stored register bytes
-  reg [7:0] control_reg;
-  reg [7:0] note_a_reg;
-  reg [7:0] channel_a_control_reg;
-  reg [7:0] note_b_reg;
-  reg [7:0] channel_b_control_reg;
+  // Store only the bits that are used now
+  reg       control_reg;
+  reg [6:0] note_a_reg;
+  reg [5:0] channel_a_control_reg;
+  reg [6:0] note_b_reg;
+  reg [5:0] channel_b_control_reg;
   reg [7:0] volume_ab_reg;
-  reg [7:0] noise_control_reg;
-  reg [7:0] envelope_control_reg;
+  reg [3:0] noise_control_reg;
+  reg [3:0] envelope_control_reg;
   reg [7:0] envelope_period_reg;
   // STATUS[2] shows that one valid write has been accepted
   reg       write_seen_reg;
 
-  assign control_value_o = control_reg;
-  assign note_a_value_o = note_a_reg;
-  assign channel_a_control_value_o = channel_a_control_reg;
-  assign note_b_value_o = note_b_reg;
-  assign channel_b_control_value_o = channel_b_control_reg;
+  // Build the full read values from the stored bits
+  assign control_value_o = {7'b0000000, control_reg};
+  assign note_a_value_o = {1'b0, note_a_reg};
+  assign channel_a_control_value_o = {2'b00, channel_a_control_reg};
+  assign note_b_value_o = {1'b0, note_b_reg};
+  assign channel_b_control_value_o = {2'b00, channel_b_control_reg};
   assign volume_ab_value_o = volume_ab_reg;
-  assign noise_control_value_o = noise_control_reg;
-  assign envelope_control_value_o = envelope_control_reg;
+  assign noise_control_value_o = {4'b0000, noise_control_reg};
+  assign envelope_control_value_o = {
+    3'b000,
+    envelope_control_reg[3],
+    envelope_control_reg[2],
+    1'b0,
+    envelope_control_reg[1:0]
+  };
   assign envelope_period_value_o = envelope_period_reg;
 
   // Store one addressed register byte on each accepted write
@@ -104,7 +111,7 @@ module register_file (
         case (write_address_i)
           ADDR_CONTROL: begin
             // Store CONTROL[0] and keep the pulse bit at 0
-            control_reg <= {7'b0000000, write_data_i[0]};
+            control_reg <= write_data_i[0];
 
             if (write_data_i[1]) begin
               // CONTROL[1] clears the stored register state
@@ -121,30 +128,28 @@ module register_file (
             end
           end
           ADDR_NOTE_A: begin
-            note_a_reg <= write_data_i;
+            note_a_reg <= write_data_i[6:0];
           end
           ADDR_CHANNEL_A_CONTROL: begin
-            channel_a_control_reg <= write_data_i;
+            channel_a_control_reg <= write_data_i[5:0];
           end
           ADDR_NOTE_B: begin
-            note_b_reg <= write_data_i;
+            note_b_reg <= write_data_i[6:0];
           end
           ADDR_CHANNEL_B_CONTROL: begin
-            channel_b_control_reg <= write_data_i;
+            channel_b_control_reg <= write_data_i[5:0];
           end
           ADDR_VOLUME_AB: begin
             volume_ab_reg <= write_data_i;
           end
           ADDR_NOISE_CONTROL: begin
-            noise_control_reg <= write_data_i;
+            noise_control_reg <= write_data_i[3:0];
           end
           ADDR_ENVELOPE_CONTROL: begin
             // Keep ENVELOPE_CONTROL[2] at 0
             envelope_control_reg <= {
-              3'b000,
               write_data_i[ENVELOPE_ENABLE_B_BIT],
               write_data_i[ENVELOPE_ENABLE_A_BIT],
-              1'b0,
               write_data_i[ENVELOPE_MODE_MSB:ENVELOPE_MODE_LSB]
             };
           end
@@ -164,28 +169,28 @@ module register_file (
 
     case (read_address_i)
       ADDR_CONTROL: begin
-        read_data_o = control_reg;
+        read_data_o = control_value_o;
       end
       ADDR_NOTE_A: begin
-        read_data_o = note_a_reg;
+        read_data_o = note_a_value_o;
       end
       ADDR_CHANNEL_A_CONTROL: begin
-        read_data_o = channel_a_control_reg;
+        read_data_o = channel_a_control_value_o;
       end
       ADDR_NOTE_B: begin
-        read_data_o = note_b_reg;
+        read_data_o = note_b_value_o;
       end
       ADDR_CHANNEL_B_CONTROL: begin
-        read_data_o = channel_b_control_reg;
+        read_data_o = channel_b_control_value_o;
       end
       ADDR_VOLUME_AB: begin
         read_data_o = volume_ab_reg;
       end
       ADDR_NOISE_CONTROL: begin
-        read_data_o = noise_control_reg;
+        read_data_o = noise_control_value_o;
       end
       ADDR_ENVELOPE_CONTROL: begin
-        read_data_o = envelope_control_reg;
+        read_data_o = envelope_control_value_o;
       end
       ADDR_ENVELOPE_PERIOD: begin
         read_data_o = envelope_period_reg;
