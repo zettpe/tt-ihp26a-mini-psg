@@ -1,6 +1,6 @@
 ## How it works
 
-This chip implements a simple retro-inspired programmable sound generator. It provides two tone channels, a shared `3` bit envelope and a `1` bit audio output. Control data is loaded through SPI. All control registers are write only.
+This chip implements a simple retro-inspired programmable sound generator. It provides two tone channels, a shared `3` bit envelope and a `1` bit audio output. Control data is written through a write-only SPI connection that uses `SPI_CS_N`, `SPI_MOSI` and `SPI_SCK`.
 
 Tone generation uses a `23` bit phase accumulator for each channel. The phase value sets the pitch and drives the selected waveform. The shared envelope can be applied to either channel to shape its level.
 
@@ -12,7 +12,7 @@ Tone generation uses a `23` bit phase accumulator for each channel. The phase va
 | `uo_out[7]` | audio output |
 | `uio_in[0]` | `SPI_CS_N` |
 | `uio_in[1]` | `SPI_MOSI` |
-| `uio_in[3]` | `SPI_SCK` |
+| `uio_in[2]` | `SPI_SCK` |
 
 Unused pins:
 
@@ -124,5 +124,5 @@ make -C test -B
 ## External hardware
 
 - a Tiny Tapeout demo board, or another board that provides power and the project clock
-- an SPI master for `SPI_CS_N`, `SPI_MOSI` and `SPI_SCK`
+- an SPI master connected to `SPI_CS_N`, `SPI_MOSI` and `SPI_SCK`
 - for audio, use the TT Audio Pmod, or use a simple low-pass RC filter followed by an amplifier and speakers or headphones

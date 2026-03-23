@@ -25,7 +25,7 @@ module tt_um_zettpe_mini_psg (
 
   localparam integer UIO_SPI_CS_N_BIT = 0;
   localparam integer UIO_SPI_MOSI_BIT = 1;
-  localparam integer UIO_SPI_SCK_BIT = 3;
+  localparam integer UIO_SPI_SCK_BIT = 2;
 
   wire spi_cs_ni = uio_in[UIO_SPI_CS_N_BIT];
   wire spi_mosi_i = uio_in[UIO_SPI_MOSI_BIT];
@@ -50,7 +50,7 @@ module tt_um_zettpe_mini_psg (
     ena,
     ui_in[7:1],
     uio_in[7:4],
-    uio_in[2],
+    uio_in[3],
     1'b0
   };
 

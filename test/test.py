@@ -17,7 +17,7 @@ SPI_MIN_FRAME_GAP_NS = SPI_MIN_HALF_PERIOD_NS
 # SPI pin positions on the shared port
 SPI_CS_BIT = 0
 SPI_MOSI_BIT = 1
-SPI_SCK_BIT = 3
+SPI_SCK_BIT = 2
 
 # Register addresses used by the live write map
 REG_CONTROL = 0x0
