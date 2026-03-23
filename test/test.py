@@ -132,6 +132,14 @@ def control_hierarchy_is_visible(dut):
         return False
 
 
+def reset_hierarchy_is_visible(dut):
+    try:
+        _ = psg_top(dut).rst_ni
+        return True
+    except AttributeError:
+        return False
+
+
 def audio_hierarchy_is_visible(dut):
     try:
         _ = gen_top(dut)
@@ -432,6 +440,10 @@ async def test_reset_defaults_keep_outputs_quiet(dut):
 @cocotb.test()
 async def test_internal_reset_release_is_synchronized_to_clk(dut):
     await start_test_clock(dut)
+
+    if not reset_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only reset check because the internal reset hierarchy is not visible")
+        return
 
     dut.ena.value = 1
     dut.ui_in.value = 0
@@ -951,6 +963,11 @@ async def test_note_lut_and_phase_accumulator_values(dut):
     await spi_write_reg(dut, REG_NOTE_A, 0x8F)
     await ClockCycles(dut.clk, 2)
     assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 0
+
+    for note_index in (0x0C, 0x0D, 0x0E, 0x0F):
+        await spi_write_reg(dut, REG_NOTE_A, note_index)
+        await ClockCycles(dut.clk, 2)
+        assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 0
 
     await spi_write_reg(dut, REG_NOTE_A, 0x10)
     await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
