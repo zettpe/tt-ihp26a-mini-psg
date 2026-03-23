@@ -1,11 +1,11 @@
 # Tiny Tapeout project information
 project:
-  title:        "Mini PSG"                                        # Project title
-  author:       "Peter Szentkuti"                                 # Author
+  title:        "Mini PSG"                                 # Project title
+  author:       "Peter Szentkuti"                          # Author
   discord:      ""      
-  description:  "Retro inspired SPI programmable sound generator" # Short description   
-  language:     "Verilog"                                         # Source language
-  clock_hz:     25000000                                          # Clock in Hz
+  description:  "Compact SPI programmable sound generator" # Short description   
+  language:     "Verilog"                                  # Source language
+  clock_hz:     25000000                                   # Clock in Hz
 
   # Tiny Tapeout tile allocation 
   # A single tile is about 167x108 uM.
