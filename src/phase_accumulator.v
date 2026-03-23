@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : phase_accumulator.v
- * Author      : Peter Szentkuti
- * Description : Phase accumulator for one tone channel
+ * File   : phase_accumulator.v
+ * Author : Peter Szentkuti
  *
- * Adds the phase step on each enabled clock edge and clears the phase
- * when reset or clear is active
+ * Phase accumulator
+ *
+ * Stores the running phase for one tone channel. Reset and clear force
+ * phase_value_o to zero. The phase advances only when advance_en_i and
+ * gate_en_i are both high:
+ *
+ * phase_value_o <= 0 on reset or clear
+ * phase_value_o <= phase_value_o + phase_step_i when advance_en_i and gate_en_i = 1
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Stores the running phase for one tone channel
 module phase_accumulator (
   input  wire        clk_i,
   input  wire        rst_ni,

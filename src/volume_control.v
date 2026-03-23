@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : volume_control.v
- * Author      : Peter Szentkuti
- * Description : Sample level control
+ * File   : volume_control.v
+ * Author : Peter Szentkuti
  *
- * Applies the fixed level or the shared envelope level with a
- * smaller set of shift and add steps
+ * Channel volume control
+ *
+ * Sets the output level of the input sample from either the fixed channel
+ * volume or the shared envelope output. When envelope_enable_i is high,
+ * envelope_level_i sets the sample level. Otherwise volume_level_i sets
+ * the sample level. The 3 bit level code maps to eight output levels from
+ * mute to full scale:
+ *
+ * output_level_code = envelope_level_i when envelope_enable_i = 1, else volume_level_i
+ * sample_out_o = sample_in_i scaled by output_level_code
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Applies the selected level to one sample stream
 module volume_control (
   input  wire signed [8:0] sample_in_i,
   input  wire [2:0]        volume_level_i,
@@ -20,13 +26,14 @@ module volume_control (
   output reg  signed [9:0] sample_out_o
 );
 
-  // Select the fixed level or the shared envelope level
-  wire [2:0] level_value = envelope_enable_i ? envelope_level_i : volume_level_i;
+  // Use the shared envelope output level when envelope control is enabled,
+  // else use the fixed channel volume level
+  wire [2:0] output_level_code = envelope_enable_i ? envelope_level_i : volume_level_i;
   wire signed [9:0] sample_wide = {sample_in_i[8], sample_in_i};
 
   always @* begin : volume_scale_comb
-    // Use a small set of coarse fixed levels
-    case (level_value)
+    // Map the 3 bit output level code to one of eight sample output levels
+    case (output_level_code)
       3'h0:    sample_out_o = 10'sd0;
       3'h1:    sample_out_o = sample_wide >>> 3;
       3'h2:    sample_out_o = sample_wide >>> 2;

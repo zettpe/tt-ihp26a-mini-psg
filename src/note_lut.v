@@ -1,21 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : note_lut.v
- * Author      : Peter Szentkuti
- * Description : Note to phase step lookup
+ * File   : note_lut.v
+ * Author : Peter Szentkuti
  *
- * Maps the stored note value to a 23 bit phase step for a 25 MHz clock
+ * Note lookup table
+ *
+ * Maps the stored note code to a 23 bit phase step for a 25 MHz clock. The
+ * lower four bits select the semitone table, the upper three bits shift
+ * that step by octave, and rest or unmapped note codes return zero:
+ *
+ * base_step = semitone step from note_value_i[3:0]
+ * phase_step_o = 0 when base_step = 0, else base_step * 2^note_value_i[6:4]
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Maps the stored note value to a phase step
 module note_lut (
   input  wire [6:0]  note_value_i,
   output reg  [22:0] phase_step_o
 );
 
+  // Base semitone steps for one octave at 25 MHz
   localparam [22:0] SEMITONE_0_STEP  = 23'd11;
   localparam [22:0] SEMITONE_1_STEP  = 23'd12;
   localparam [22:0] SEMITONE_2_STEP  = 23'd13;
@@ -29,7 +35,7 @@ module note_lut (
   localparam [22:0] SEMITONE_10_STEP = 23'd20;
   localparam [22:0] SEMITONE_11_STEP = 23'd21;
 
-  // Keep one octave table and shift it for the selected octave
+  // Select the semitone step and shift it by octave
   wire [3:0] note_index = note_value_i[3:0];
   wire [2:0] octave_value = note_value_i[6:4];
   reg  [22:0] base_step;
@@ -53,7 +59,7 @@ module note_lut (
       default: base_step = 23'd0;
     endcase
 
-    // Note index 15 is the rest code in this build
+    // Note index 15 is the rest code, and unmapped note codes also return 0
     if ((note_index == 4'd15) || (base_step == 23'd0)) begin
       phase_step_o = 23'd0;
     end else begin

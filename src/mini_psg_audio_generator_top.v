@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : mini_psg_audio_generator_top.v
- * Author      : Peter Szentkuti
- * Description : Tone and envelope block
+ * File   : mini_psg_audio_generator_top.v
+ * Author : Peter Szentkuti
  *
- * Builds the channel source samples and the envelope level from
- * the stored register values
+ * Audio generation path wrapper
+ *
+ * Builds the two channel source samples and the shared envelope. Each
+ * channel has its own note, phase and waveform path, and both channels
+ * share one 3 bit envelope generator.
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Builds the tone and envelope source signals
 module mini_psg_audio_generator_top (
   input  wire              clk_i,
   input  wire              rst_ni,
@@ -58,7 +59,8 @@ module mini_psg_audio_generator_top (
   wire              channel_a_tone_enable;
   wire              channel_b_tone_enable;
 
-  // Gate and enable bits decide which source parts are live
+  // Gate, tone enable and a nonzero phase step decide whether the tone
+  // path is active
   assign channel_a_gate_on = audio_enable_i &&
       channel_a_control_value_i[CHANNEL_CONTROL_GATE_ENABLE_BIT];
   assign channel_b_gate_on = audio_enable_i &&
@@ -70,6 +72,8 @@ module mini_psg_audio_generator_top (
   assign channel_b_tone_enable = channel_b_gate_on &&
       channel_b_control_value_i[CHANNEL_CONTROL_TONE_ENABLE_BIT] &&
       (channel_b_phase_step != 23'd0);
+  // Each channel uses both its local control bit and the shared
+  // ENVELOPE_CONTROL bit to enable the shared envelope level
   assign channel_a_envelope_enable_o =
       channel_a_control_value_i[CHANNEL_CONTROL_ENVELOPE_ENABLE_BIT] &&
       envelope_control_value_i[ENVELOPE_CONTROL_ENABLE_A_BIT];
@@ -137,7 +141,7 @@ module mini_psg_audio_generator_top (
     .envelope_level_o    (envelope_level_o)
   );
 
-  // Add the enabled tone parts for each channel
+  // Drive each channel source sample from the enabled tone path
   assign channel_a_tone_sample =
       channel_a_tone_enable ? channel_a_wave_sample : 8'sd0;
   assign channel_b_tone_sample =
@@ -147,7 +151,7 @@ module mini_psg_audio_generator_top (
   assign channel_b_source_sample_o =
       $signed({channel_b_tone_sample[7], channel_b_tone_sample});
 
-  // These stored bits are not used now
+  // Fold unused phase bits away to keep lint quiet
   wire unused_control_bits = &{
     channel_a_phase_value[14:0],
     channel_b_phase_value[14:0],

@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : register_file.v
- * Author      : Peter Szentkuti
- * Description : Register file with stored control values
+ * File   : register_file.v
+ * Author : Peter Szentkuti
  *
- * Stores the register values and keeps the write masks used by
- * the live audio path
+ * Register file
+ *
+ * Stores the live write register map and masks the unused bits on write.
+ * The stored state covers CONTROL, NOTE_A, CHANNEL_A_CONTROL, NOTE_B,
+ * CHANNEL_B_CONTROL, VOLUME_AB, ENVELOPE_CONTROL and ENVELOPE_PERIOD.
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Store register values
 module register_file (
   input  wire       clk_i,
   input  wire       rst_ni,
@@ -38,7 +39,7 @@ module register_file (
   localparam [3:0] ADDR_ENVELOPE_CONTROL = 4'h7;
   localparam [3:0] ADDR_ENVELOPE_PERIOD = 4'h8;
 
-  // ENVELOPE_CONTROL bits used now
+  // ENVELOPE_CONTROL write byte bit positions used now
   localparam integer ENVELOPE_MODE_BIT = 0;
   localparam integer ENVELOPE_ENABLE_A_BIT = 3;
   localparam integer ENVELOPE_ENABLE_B_BIT = 4;
@@ -51,7 +52,7 @@ module register_file (
   localparam [2:0] DEFAULT_ENVELOPE_CONTROL_REG = 3'h0;
   localparam [7:0] DEFAULT_ENVELOPE_PERIOD_REG = 8'h10;
 
-  // Store only the bits that are used now
+  // Store only the live bits from each register
   reg       control_reg;
   reg [6:0] note_a_reg;
   reg [4:0] channel_a_control_reg;
@@ -104,6 +105,7 @@ module register_file (
             note_a_reg <= write_data_i[6:0];
           end
           ADDR_CHANNEL_A_CONTROL: begin
+            // Keep waveform select, tone enable, envelope enable and gate enable
             channel_a_control_reg <= {
               write_data_i[5],
               write_data_i[4],
@@ -115,6 +117,7 @@ module register_file (
             note_b_reg <= write_data_i[6:0];
           end
           ADDR_CHANNEL_B_CONTROL: begin
+            // Keep waveform select, tone enable, envelope enable and gate enable
             channel_b_control_reg <= {
               write_data_i[5],
               write_data_i[4],
@@ -123,13 +126,14 @@ module register_file (
             };
           end
           ADDR_VOLUME_AB: begin
+            // Keep the two 3 bit channel volume fields
             volume_ab_reg <= {
               write_data_i[6:4],
               write_data_i[2:0]
             };
           end
           ADDR_ENVELOPE_CONTROL: begin
-            // Keep ENVELOPE_CONTROL[2:1] at 0
+            // Store envelope mode and the two per-channel enable bits
             envelope_control_reg <= {
               write_data_i[ENVELOPE_ENABLE_B_BIT],
               write_data_i[ENVELOPE_ENABLE_A_BIT],

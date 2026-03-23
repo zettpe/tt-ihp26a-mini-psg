@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : envelope_generator.v
- * Author      : Peter Szentkuti
- * Description : Shared envelope generator
+ * File   : envelope_generator.v
+ * Author : Peter Szentkuti
  *
- * Generates the shared 3 bit envelope level from the selected mode
- * and step period
+ * Envelope generator
+ *
+ * Builds the 3 bit envelope level from the selected mode and step period.
+ * Mode 0 toggles between full scale and zero. Mode 1 steps down from full
+ * scale and wraps back to full scale.
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Generates the shared 3 bit envelope level
 module envelope_generator (
   input  wire       clk_i,
   input  wire       rst_ni,
@@ -41,10 +42,12 @@ module envelope_generator (
       envelope_level_o <= 3'h7;
       square_high_reg <= 1'b1;
     end else if (!envelope_enable_i) begin
+      // Hold the envelope at full level while it is disabled
       counter_reg <= step_period - 8'd1;
       envelope_level_o <= 3'h7;
       square_high_reg <= 1'b1;
     end else if (restart_pulse_i) begin
+      // Restart from full level and reload the step counter
       counter_reg <= step_period - 8'd1;
       envelope_level_o <= 3'h7;
       square_high_reg <= 1'b1;

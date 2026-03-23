@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : mini_psg_top.v
- * Author      : Peter Szentkuti
- * Description : Project top
+ * File   : mini_psg_top.v
+ * Author : Peter Szentkuti
+ *
+ * Mini PSG core
+ *
+ * Combines the write only SPI control path and the audio path. Keeps the
+ * two tone channels, the shared envelope and the 1 bit output in one
+ * clocked core.
  */
 
 `default_nettype none
@@ -29,6 +34,7 @@ module mini_psg_top (
   wire [7:0] envelope_period_value;
   wire       envelope_restart_pulse;
 
+  // Decode SPI writes into stored control values and pulse outputs
   mini_psg_control_top mini_psg_control_top_u (
     .clk_i                    (clk_i),
     .rst_ni                   (rst_ni),
@@ -47,6 +53,7 @@ module mini_psg_top (
     .envelope_restart_pulse_o (envelope_restart_pulse)
   );
 
+  // Turn the stored control values into the 1 bit audio output
   mini_psg_audio_top mini_psg_audio_top_u (
     .clk_i                     (clk_i),
     .rst_ni                    (rst_ni),

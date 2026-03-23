@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : mini_psg_control_top.v
- * Author      : Peter Szentkuti
- * Description : SPI write block and register file
+ * File   : mini_psg_control_top.v
+ * Author : Peter Szentkuti
  *
- * Connects the SPI slave to the register file and sends the stored
- * values to the audio block
+ * Control path wrapper
+ *
+ * Connects the write only SPI slave and the register file, sends the
+ * stored control values to the audio path and generates the CONTROL clear
+ * and ENVELOPE restart pulses from writes.
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Connects the SPI slave and the register file
 module mini_psg_control_top (
   input  wire       clk_i,
   input  wire       rst_ni,
@@ -50,6 +51,7 @@ module mini_psg_control_top (
       (spi_write_address == ADDR_ENVELOPE_CONTROL) &&
       spi_write_data[ENVELOPE_RESTART_BIT];
 
+  // Sample the SPI pins and decode one write frame at a time
   spi_slave spi_slave_u (
     .clk_i                (clk_i),
     .rst_ni               (rst_ni),
@@ -61,6 +63,7 @@ module mini_psg_control_top (
     .write_enable_o       (spi_write_enable)
   );
 
+  // Store the live control registers and expose their decoded fields
   register_file register_file_u (
     .clk_i                    (clk_i),
     .rst_ni                   (rst_ni),

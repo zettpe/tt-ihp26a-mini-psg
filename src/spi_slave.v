@@ -1,20 +1,41 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : spi_slave.v
- * Author      : Peter Szentkuti
- * Description : SPI slave for register writes
+ * File   : spi_slave.v
+ * Author : Peter Szentkuti
  *
- * Reads CS_N, SCK and MOSI with clk_i and handles one command byte and one
- * data byte while CS_N stays low. Only write commands are accepted. After
- * those two bytes, later SCK edges do not start another transfer until
- * CS_N goes high
+ * SPI slave
+ *
+ * Samples the Mode 0 SPI pins with clk_i and does not use spi_sck_i as an
+ * internal clock. Accepts one write frame with one command byte followed
+ * by one data byte, then pulses write_enable_o for one clk_i cycle when
+ * the frame is accepted.
+ *
+ * Interface
+ * - SPI Mode 0
+ * - CS_N is active low
+ * - Write only interface with no read data path
+ *
+ * Frame format
+ * - One frame is one command byte followed by one data byte
+ * - Command bits [7:4] must be 0000
+ * - Command bits [3:0] select the write address
+ * - The second byte is the write data
+ * - Any CS_N edge aborts a partial frame
+ * - Extra clocks after the data byte are ignored until CS_N returns high
+ *
+ * External timing requirements
+ * - CS_N, SCK and MOSI are sampled with clk_i
+ * - SPI_SCK must not exceed clk_i / 8
+ * - Keep SCK low and high for at least 4 clk_i cycles each
+ * - Present MOSI in Mode 0 form and keep it stable around each SCK rising edge
+ * - Take CS_N low at least 4 clk_i cycles before the first SCK rising edge
+ * - Keep CS_N low at least 4 clk_i cycles after the last SCK falling edge
+ * - Keep CS_N high at least 4 clk_i cycles between frames
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// SPI mode 0 slave that accepts one command byte and one data byte
-// Keep SPI_SCK at clk_i / 8 or slower and keep CS_N high between frames
 module spi_slave (
   input  wire       clk_i,
   input  wire       rst_ni,
@@ -58,19 +79,19 @@ module spi_slave (
   reg       write_enable_q;
   reg       write_enable_d;
 
-  // Read the SPI pins with clk_i before finding CS_N and SCK edges
+  // Find CS_N and SCK edges after the clk_i input stages
   wire       cs_fall = (cs_sync_q[2:1] == 2'b10);
   wire       cs_rise = (cs_sync_q[2:1] == 2'b01);
   wire       cs_low = ~cs_sync_q[2];
   wire       sck_rise = (sck_sync_q[2:1] == 2'b01);
 
-  // Build the full received byte from the stored bits and the newest MOSI bit
+  // Build the full byte from the stored bits and the newest MOSI bit
   wire [7:0] rx_byte = {rx_shift_q, mosi_sync_q[1]};
 
   // Only write command bits [7:4] = 0000 are accepted
   wire       cmd_ok = (rx_byte[7:4] == 4'b0000);
 
-  // Drive the stored results out of the block
+  // Drive the last accepted write out of the block
   assign write_address_o = write_address_q;
   assign write_data_o = write_data_q;
   assign write_enable_o = write_enable_q;
@@ -105,7 +126,8 @@ module spi_slave (
   end
 
   always @* begin : spi_next_state_comb
-    // Keep the current values unless the SPI transfer changes them
+    // Sample the SPI pins every clk_i cycle, hold the transfer state by
+    // default and pulse write_enable_o only on a full write
     cs_sync_d = {cs_sync_q[1:0], spi_cs_ni};
     sck_sync_d = {sck_sync_q[1:0], spi_sck_i};
     mosi_sync_d = {mosi_sync_q[0], spi_mosi_i};

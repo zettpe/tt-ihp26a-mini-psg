@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : waveform_generator.v
- * Author      : Peter Szentkuti
- * Description : Waveform generator for one tone channel
+ * File   : waveform_generator.v
+ * Author : Peter Szentkuti
  *
- * Builds the selected wave from the upper phase bits
+ * Waveform generator
+ *
+ * Builds square, 25% duty cycle pulse, saw and triangle samples from the
+ * 8 bit phase input.
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Builds one waveform sample from the upper phase bits
 module waveform_generator (
   input  wire [7:0]        phase_view_i,
   input  wire [1:0]        waveform_select_i,
@@ -22,11 +23,12 @@ module waveform_generator (
   localparam [1:0] WAVE_SAW = 2'b10;
   localparam [1:0] WAVE_TRIANGLE = 2'b11;
 
-  // Mirror the phase ramp to build the triangle shape
+  // Mirror the upper phase ramp to build the triangle shape
   wire [6:0] triangle_level =
       phase_view_i[7] ? ~phase_view_i[6:0] : phase_view_i[6:0];
 
   always @* begin : wave_comb
+    // Build the selected waveform from the upper phase bits
     case (waveform_select_i)
       WAVE_SQUARE: begin
         sample_out_o = phase_view_i[7] ? 8'sd96 : -8'sd96;

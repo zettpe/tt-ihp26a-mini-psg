@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : mini_psg_audio_top.v
- * Author      : Peter Szentkuti
- * Description : Audio block
+ * File   : mini_psg_audio_top.v
+ * Author : Peter Szentkuti
  *
- * Connects the tone and envelope signals to the level control,
- * mixer and 1 bit audio output
+ * Audio path wrapper
+ *
+ * Connects the tone and envelope generator to the output path. Keeps the
+ * two tone channels and the shared envelope in one audio path.
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Connects the audio generator block and the audio output block
 module mini_psg_audio_top (
   input  wire       clk_i,
   input  wire       rst_ni,
@@ -35,7 +35,7 @@ module mini_psg_audio_top (
   wire              channel_a_envelope_enable;
   wire              channel_b_envelope_enable;
 
-  // Generate the raw channel samples
+  // Build the channel source samples and the shared envelope level
   mini_psg_audio_generator_top mini_psg_audio_generator_top_u (
     .clk_i                      (clk_i),
     .rst_ni                     (rst_ni),
@@ -55,7 +55,7 @@ module mini_psg_audio_top (
     .channel_b_source_sample_o  (channel_b_source_sample)
   );
 
-  // Scale mix and send the audio output
+  // Apply channel volume, mix both channels and drive the audio output
   mini_psg_audio_output_top mini_psg_audio_output_top_u (
     .clk_i                      (clk_i),
     .rst_ni                     (rst_ni),
