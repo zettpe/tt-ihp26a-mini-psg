@@ -11,7 +11,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module mini_psg_audio_output_top (
   input  wire              clk_i,
@@ -83,5 +82,3 @@ module mini_psg_audio_output_top (
   assign audio_o = (hard_mute_i || !audio_enable_i) ? 1'b0 : audio_raw;
 
 endmodule // mini_psg_audio_output_top
-
-`default_nettype wire

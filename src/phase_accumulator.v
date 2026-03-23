@@ -14,7 +14,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module phase_accumulator (
   input  wire        clk_i,
@@ -38,5 +37,3 @@ module phase_accumulator (
   end
 
 endmodule // phase_accumulator
-
-`default_nettype wire

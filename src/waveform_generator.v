@@ -10,7 +10,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module waveform_generator (
   input  wire [7:0]        phase_view_i,
@@ -49,5 +48,3 @@ module waveform_generator (
   end
 
 endmodule // waveform_generator
-
-`default_nettype wire

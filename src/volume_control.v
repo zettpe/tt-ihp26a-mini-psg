@@ -16,7 +16,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module volume_control (
   input  wire signed [8:0] sample_in_i,
@@ -47,5 +46,3 @@ module volume_control (
   end
 
 endmodule // volume_control
-
-`default_nettype wire

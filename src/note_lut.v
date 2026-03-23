@@ -14,7 +14,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module note_lut (
   input  wire [6:0]  note_value_i,
@@ -68,5 +67,3 @@ module note_lut (
   end
 
 endmodule // note_lut
-
-`default_nettype wire

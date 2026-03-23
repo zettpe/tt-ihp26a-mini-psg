@@ -11,7 +11,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module register_file (
   input  wire       clk_i,
@@ -151,5 +150,3 @@ module register_file (
   end
 
 endmodule // register_file
-
-`default_nettype wire

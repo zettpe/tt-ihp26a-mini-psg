@@ -11,7 +11,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module mini_psg_top (
   input  wire       clk_i,
@@ -72,5 +71,3 @@ module mini_psg_top (
   );
 
 endmodule // mini_psg_top
-
-`default_nettype wire

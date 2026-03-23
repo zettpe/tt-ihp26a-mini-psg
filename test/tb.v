@@ -33,5 +33,3 @@ module tb;
   wire unused_signals = &{uo_out, uio_out, uio_oe, 1'b0};
 
 endmodule
-
-`default_nettype wire

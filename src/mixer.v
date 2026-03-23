@@ -13,7 +13,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module mixer (
   input  wire signed [9:0] channel_a_sample_i,
@@ -38,5 +37,3 @@ module mixer (
   end
 
 endmodule // mixer
-
-`default_nettype wire

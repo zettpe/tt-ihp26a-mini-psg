@@ -18,7 +18,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module dac_1bit (
   input  wire              clk_i,
@@ -53,5 +52,3 @@ module dac_1bit (
   end
 
 endmodule // dac_1bit
-
-`default_nettype wire

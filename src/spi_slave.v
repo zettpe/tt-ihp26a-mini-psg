@@ -34,7 +34,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module spi_slave (
   input  wire       clk_i,
@@ -177,5 +176,3 @@ module spi_slave (
   end
 
 endmodule // spi_slave
-
-`default_nettype wire

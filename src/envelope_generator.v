@@ -11,7 +11,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module envelope_generator (
   input  wire       clk_i,
@@ -69,5 +68,3 @@ module envelope_generator (
   end
 
 endmodule // envelope_generator
-
-`default_nettype wire

@@ -11,7 +11,6 @@
  */
 
 `default_nettype none
-`timescale 1ns / 1ps
 
 module mini_psg_audio_generator_top (
   input  wire              clk_i,
@@ -159,5 +158,3 @@ module mini_psg_audio_generator_top (
   };
 
 endmodule // mini_psg_audio_generator_top
-
-`default_nettype wire
