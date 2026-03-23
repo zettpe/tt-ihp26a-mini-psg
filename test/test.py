@@ -13,6 +13,7 @@ CLK_PERIOD_NS = 40
 SPI_MIN_HALF_PERIOD_CYCLES = 4
 SPI_MIN_HALF_PERIOD_NS = CLK_PERIOD_NS * SPI_MIN_HALF_PERIOD_CYCLES
 SPI_MIN_FRAME_GAP_NS = SPI_MIN_HALF_PERIOD_NS
+HARD_MUTE_SYNC_CYCLES = 2
 
 # SPI pin positions on the shared port
 SPI_CS_BIT = 0
@@ -28,6 +29,7 @@ REG_CHANNEL_B_CONTROL = 0x4
 REG_VOLUME_AB = 0x5
 REG_ENVELOPE_CONTROL = 0x7
 REG_ENVELOPE_PERIOD = 0x8
+ACTIVE_TEST_NOTE = 0x79
 
 ALL_WRITE_ADDRESSES = (
     REG_CONTROL,
@@ -89,6 +91,10 @@ def gen_top(dut):
 
 def out_top(dut):
     return audio_top(dut).mini_psg_audio_output_top_u
+
+
+def hard_mute_sync_state(dut):
+    return out_top(dut).hard_mute_sync_q.value.to_unsigned()
 
 
 def reg_file(dut):
@@ -540,7 +546,7 @@ async def test_soft_clear_restores_default_register_state(dut):
     await apply_reset(dut)
 
     await spi_write_reg(dut, REG_CONTROL, 0x01)
-    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_NOTE_A, ACTIVE_TEST_NOTE)
     await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
     await spi_write_reg(dut, REG_VOLUME_AB, 0x0F)
 
@@ -566,7 +572,7 @@ async def test_audio_output_follows_spi_writes_and_hard_mute(dut):
     await apply_reset(dut)
 
     await spi_write_reg(dut, REG_CONTROL, 0x01)
-    await set_channel_a(dut, note_value=0x7B, control_value=0x24, volume_value=0x0F)
+    await set_channel_a(dut, note_value=ACTIVE_TEST_NOTE, control_value=0x24, volume_value=0x0F)
 
     audio_samples = []
     quiet_bits = []
@@ -579,9 +585,14 @@ async def test_audio_output_follows_spi_writes_and_hard_mute(dut):
     assert all(value == 0 for value in quiet_bits)
 
     await set_ui_value(dut, 0x01)
-    await ClockCycles(dut.clk, 4)
-    assert audio_value(dut) == 0
+    await ClockCycles(dut.clk, HARD_MUTE_SYNC_CYCLES + 2)
+    muted_audio = await sample_signal_for_cycles(dut, lambda: audio_value(dut), 16)
+    assert set(muted_audio) == {0}
     assert quiet_output_bits(dut) == 0
+
+    await set_ui_value(dut, 0x00)
+    resumed_audio = await sample_signal_for_cycles(dut, lambda: audio_value(dut), 128)
+    assert len(set(resumed_audio)) > 1
 
 
 @cocotb.test()
@@ -594,7 +605,7 @@ async def test_hard_mute_clears_dac_state_before_release(dut):
         return
 
     await spi_write_reg(dut, REG_CONTROL, 0x01)
-    await set_channel_a(dut, note_value=0x7B, control_value=0x24, volume_value=0x0F)
+    await set_channel_a(dut, note_value=ACTIVE_TEST_NOTE, control_value=0x24, volume_value=0x0F)
 
     raw_before_mute = await sample_signal_for_cycles(
         dut,
@@ -603,11 +614,27 @@ async def test_hard_mute_clears_dac_state_before_release(dut):
     )
     assert len(set(raw_before_mute)) > 1
 
+    await RisingEdge(dut.clk)
     dut.ui_in.value = 0x01
     await ReadOnly()
+    assert hard_mute_sync_state(dut) == 0x0
+    assert audio_value(dut) == int(dac_block(dut).audio_o.value)
+
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+    assert hard_mute_sync_state(dut) == 0x1
+    assert audio_value(dut) == int(dac_block(dut).audio_o.value)
+
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+    assert hard_mute_sync_state(dut) == 0x3
     assert audio_value(dut) == 0
 
-    await ClockCycles(dut.clk, 4)
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+    assert audio_value(dut) == 0
+    assert int(dac_block(dut).audio_o.value) == 0
+    assert dac_block(dut).error_reg.value.to_signed() == 0
 
     muted_top_samples = []
     muted_raw_samples = []
@@ -622,8 +649,24 @@ async def test_hard_mute_clears_dac_state_before_release(dut):
     assert set(muted_raw_samples) == {0}
     assert set(muted_error_values) == {0}
 
+    await RisingEdge(dut.clk)
     dut.ui_in.value = 0x00
     await ReadOnly()
+    assert hard_mute_sync_state(dut) == 0x3
+
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+    assert hard_mute_sync_state(dut) == 0x2
+    assert audio_value(dut) == 0
+    assert int(dac_block(dut).audio_o.value) == 0
+    assert dac_block(dut).error_reg.value.to_signed() == 0
+
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+    assert hard_mute_sync_state(dut) == 0x0
+    assert audio_value(dut) == 0
+    assert int(dac_block(dut).audio_o.value) == 0
+    assert dac_block(dut).error_reg.value.to_signed() == 0
 
     resumed_top_samples = []
     resumed_raw_samples = []
@@ -839,7 +882,7 @@ async def test_random_legal_spi_traffic_matches_register_model(dut):
 
 # Audio path checks
 @cocotb.test()
-async def test_note_path_gate_and_rest_are_cleanly_muted(dut):
+async def test_note_path_gate_and_no_tone_codes_are_cleanly_muted(dut):
     await start_test_clock(dut)
     await apply_reset(dut)
 
@@ -948,15 +991,22 @@ async def test_note_lut_and_phase_accumulator_values(dut):
         dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
         return
 
+    expected_base_steps = [11, 12, 13, 14, 15, 16, 17, 18, 20, 21]
+
     await spi_write_reg(dut, REG_NOTE_A, 0x00)
     await ClockCycles(dut.clk, 2)
     assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 11
+
+    for note_index, expected_step in enumerate(expected_base_steps):
+        await spi_write_reg(dut, REG_NOTE_A, note_index)
+        await ClockCycles(dut.clk, 2)
+        assert note_lut_a(dut).phase_step_o.value.to_unsigned() == expected_step
 
     await spi_write_reg(dut, REG_NOTE_A, 0x10)
     await ClockCycles(dut.clk, 2)
     assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 22
 
-    await spi_write_reg(dut, REG_NOTE_A, 0x2B)
+    await spi_write_reg(dut, REG_NOTE_A, 0x29)
     await ClockCycles(dut.clk, 2)
     assert note_lut_a(dut).phase_step_o.value.to_unsigned() == (21 << 2)
 
@@ -964,7 +1014,7 @@ async def test_note_lut_and_phase_accumulator_values(dut):
     await ClockCycles(dut.clk, 2)
     assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 0
 
-    for note_index in (0x0C, 0x0D, 0x0E, 0x0F):
+    for note_index in (0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F):
         await spi_write_reg(dut, REG_NOTE_A, note_index)
         await ClockCycles(dut.clk, 2)
         assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 0
@@ -1001,7 +1051,7 @@ async def test_waveform_generator_builds_all_shapes(dut):
         dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
         return
 
-    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_NOTE_A, ACTIVE_TEST_NOTE)
     await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
     await spi_write_reg(dut, REG_CONTROL, 0x01)
 
@@ -1103,7 +1153,7 @@ async def test_volume_control_and_mixer_follow_levels(dut):
         dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
         return
 
-    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_NOTE_A, ACTIVE_TEST_NOTE)
     await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
     await spi_write_reg(dut, REG_VOLUME_AB, 0x05)
     await spi_write_reg(dut, REG_CONTROL, 0x01)
@@ -1139,9 +1189,9 @@ async def test_two_channel_mix_reaches_live_range_limits(dut):
         dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
         return
 
-    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_NOTE_A, ACTIVE_TEST_NOTE)
     await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x26)
-    await spi_write_reg(dut, REG_NOTE_B, 0x7B)
+    await spi_write_reg(dut, REG_NOTE_B, ACTIVE_TEST_NOTE)
     await spi_write_reg(dut, REG_CHANNEL_B_CONTROL, 0x26)
     await spi_write_reg(dut, REG_VOLUME_AB, 0x77)
     await spi_write_reg(dut, REG_CONTROL, 0x01)
@@ -1164,7 +1214,7 @@ async def test_dac_and_audio_output_drive_activity(dut):
         dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
         return
 
-    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_NOTE_A, ACTIVE_TEST_NOTE)
     await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x24)
     await spi_write_reg(dut, REG_VOLUME_AB, 0x0F)
     await spi_write_reg(dut, REG_CONTROL, 0x01)
@@ -1183,7 +1233,7 @@ async def test_dac_and_audio_output_drive_activity(dut):
     assert all(value == 0 for value in quiet_bits)
 
     await set_ui_value(dut, 0x01)
-    await ClockCycles(dut.clk, 4)
+    await ClockCycles(dut.clk, HARD_MUTE_SYNC_CYCLES + 2)
     assert audio_value(dut) == 0
 
     await set_ui_value(dut, 0x00)
@@ -1213,7 +1263,7 @@ async def test_channel_b_envelope_enable_and_hard_mute(dut):
         return
 
     await spi_write_reg(dut, REG_CONTROL, 0x01)
-    await spi_write_reg(dut, REG_NOTE_B, 0x7B)
+    await spi_write_reg(dut, REG_NOTE_B, ACTIVE_TEST_NOTE)
     await spi_write_reg(dut, REG_CHANNEL_B_CONTROL, 0x34)
     await spi_write_reg(dut, REG_VOLUME_AB, 0x70)
     await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x20)
@@ -1235,8 +1285,9 @@ async def test_channel_b_envelope_enable_and_hard_mute(dut):
 
     await set_ui_value(dut, 0x01)
     await ClockCycles(dut.clk, 4)
-    assert audio_value(dut) == 0
+    muted_audio = await sample_signal_for_cycles(dut, lambda: audio_value(dut), 16)
+    assert set(muted_audio) == {0}
 
     await set_ui_value(dut, 0x00)
-    await ClockCycles(dut.clk, 4)
-    assert audio_value(dut) in (0, 1)
+    resumed_audio = await sample_signal_for_cycles(dut, lambda: audio_value(dut), 128)
+    assert len(set(resumed_audio)) > 1
