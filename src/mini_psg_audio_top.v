@@ -4,33 +4,32 @@
  * Author      : Peter Szentkuti
  * Description : Audio block
  *
- * Connects the tone noise and envelope signals to the level control,
+ * Connects the tone and envelope signals to the level control,
  * mixer and 1 bit audio output
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Connects the audio signal block and the audio output block
+// Connects the audio generator block and the audio output block
 module mini_psg_audio_top (
   input  wire       clk_i,
   input  wire       rst_ni,
   input  wire       clear_enable_i,
   input  wire       audio_enable_i,
   input  wire       hard_mute_i,
-  input  wire [7:0] note_a_value_i,
-  input  wire [7:0] channel_a_control_value_i,
-  input  wire [7:0] note_b_value_i,
-  input  wire [7:0] channel_b_control_value_i,
-  input  wire [7:0] volume_ab_value_i,
-  input  wire [7:0] noise_control_value_i,
-  input  wire [7:0] envelope_control_value_i,
+  input  wire [6:0] note_a_value_i,
+  input  wire [4:0] channel_a_control_value_i,
+  input  wire [6:0] note_b_value_i,
+  input  wire [4:0] channel_b_control_value_i,
+  input  wire [5:0] volume_ab_value_i,
+  input  wire [2:0] envelope_control_value_i,
   input  wire [7:0] envelope_period_value_i,
   input  wire       envelope_restart_pulse_i,
   output wire       audio_o
 );
 
-  wire [3:0]        envelope_level;
+  wire [2:0]        envelope_level;
   wire signed [8:0] channel_a_source_sample;
   wire signed [8:0] channel_b_source_sample;
   wire              channel_a_envelope_enable;
@@ -46,7 +45,6 @@ module mini_psg_audio_top (
     .channel_a_control_value_i  (channel_a_control_value_i),
     .note_b_value_i             (note_b_value_i),
     .channel_b_control_value_i  (channel_b_control_value_i),
-    .noise_control_value_i      (noise_control_value_i),
     .envelope_control_value_i   (envelope_control_value_i),
     .envelope_period_value_i    (envelope_period_value_i),
     .envelope_restart_pulse_i   (envelope_restart_pulse_i),

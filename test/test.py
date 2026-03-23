@@ -26,11 +26,19 @@ REG_CHANNEL_A_CONTROL = 0x2
 REG_NOTE_B = 0x3
 REG_CHANNEL_B_CONTROL = 0x4
 REG_VOLUME_AB = 0x5
-REG_NOISE_CONTROL = 0x6
 REG_ENVELOPE_CONTROL = 0x7
 REG_ENVELOPE_PERIOD = 0x8
 
-ALL_WRITE_ADDRESSES = tuple(range(REG_ENVELOPE_PERIOD + 1))
+ALL_WRITE_ADDRESSES = (
+    REG_CONTROL,
+    REG_NOTE_A,
+    REG_CHANNEL_A_CONTROL,
+    REG_NOTE_B,
+    REG_CHANNEL_B_CONTROL,
+    REG_VOLUME_AB,
+    REG_ENVELOPE_CONTROL,
+    REG_ENVELOPE_PERIOD,
+)
 
 
 # Small pin helpers
@@ -93,10 +101,6 @@ def phase_accumulator_a(dut):
 
 def waveform_a(dut):
     return gen_top(dut).waveform_generator_a_u
-
-
-def noise_block(dut):
-    return gen_top(dut).noise_generator_u
 
 
 def envelope_block(dut):
@@ -163,7 +167,6 @@ def new_reg_state():
         REG_NOTE_B: 0x0F,
         REG_CHANNEL_B_CONTROL: 0x00,
         REG_VOLUME_AB: 0x00,
-        REG_NOISE_CONTROL: 0x00,
         REG_ENVELOPE_CONTROL: 0x00,
         REG_ENVELOPE_PERIOD: 0x10,
     }
@@ -178,37 +181,47 @@ def apply_reg_write(reg_state, address, data):
     elif address == REG_NOTE_A:
         reg_state[REG_NOTE_A] = data & 0x7F
     elif address == REG_CHANNEL_A_CONTROL:
-        reg_state[REG_CHANNEL_A_CONTROL] = data & 0x3F
+        reg_state[REG_CHANNEL_A_CONTROL] = data & 0x37
     elif address == REG_NOTE_B:
         reg_state[REG_NOTE_B] = data & 0x7F
     elif address == REG_CHANNEL_B_CONTROL:
-        reg_state[REG_CHANNEL_B_CONTROL] = data & 0x3F
+        reg_state[REG_CHANNEL_B_CONTROL] = data & 0x37
     elif address == REG_VOLUME_AB:
-        reg_state[REG_VOLUME_AB] = data & 0xFF
-    elif address == REG_NOISE_CONTROL:
-        reg_state[REG_NOISE_CONTROL] = data & 0x0F
+        reg_state[REG_VOLUME_AB] = data & 0x77
     elif address == REG_ENVELOPE_CONTROL:
-        reg_state[REG_ENVELOPE_CONTROL] = data & 0x1B
+        reg_state[REG_ENVELOPE_CONTROL] = data & 0x19
     elif address == REG_ENVELOPE_PERIOD:
         reg_state[REG_ENVELOPE_PERIOD] = data & 0xFF
 
 
 def packed_envelope_control(reg_value):
     return (
-        (((reg_value >> 4) & 1) << 3) |
-        (((reg_value >> 3) & 1) << 2) |
-        (reg_value & 0x03)
+        (((reg_value >> 4) & 1) << 2) |
+        (((reg_value >> 3) & 1) << 1) |
+        (reg_value & 0x01)
     )
 
 
 def assert_control_state_matches(dut, reg_state):
     assert int(reg_file(dut).control_reg.value) == (reg_state[REG_CONTROL] & 0x01)
     assert reg_file(dut).note_a_reg.value.to_unsigned() == (reg_state[REG_NOTE_A] & 0x7F)
-    assert reg_file(dut).channel_a_control_reg.value.to_unsigned() == (reg_state[REG_CHANNEL_A_CONTROL] & 0x3F)
+    assert reg_file(dut).channel_a_control_reg.value.to_unsigned() == (
+        (((reg_state[REG_CHANNEL_A_CONTROL] >> 5) & 1) << 4) |
+        (((reg_state[REG_CHANNEL_A_CONTROL] >> 4) & 1) << 3) |
+        (((reg_state[REG_CHANNEL_A_CONTROL] >> 2) & 1) << 2) |
+        (reg_state[REG_CHANNEL_A_CONTROL] & 0x03)
+    )
     assert reg_file(dut).note_b_reg.value.to_unsigned() == (reg_state[REG_NOTE_B] & 0x7F)
-    assert reg_file(dut).channel_b_control_reg.value.to_unsigned() == (reg_state[REG_CHANNEL_B_CONTROL] & 0x3F)
-    assert reg_file(dut).volume_ab_reg.value.to_unsigned() == reg_state[REG_VOLUME_AB]
-    assert reg_file(dut).noise_control_reg.value.to_unsigned() == (reg_state[REG_NOISE_CONTROL] & 0x0F)
+    assert reg_file(dut).channel_b_control_reg.value.to_unsigned() == (
+        (((reg_state[REG_CHANNEL_B_CONTROL] >> 5) & 1) << 4) |
+        (((reg_state[REG_CHANNEL_B_CONTROL] >> 4) & 1) << 3) |
+        (((reg_state[REG_CHANNEL_B_CONTROL] >> 2) & 1) << 2) |
+        (reg_state[REG_CHANNEL_B_CONTROL] & 0x03)
+    )
+    assert reg_file(dut).volume_ab_reg.value.to_unsigned() == (
+        (((reg_state[REG_VOLUME_AB] >> 4) & 0x07) << 3) |
+        (reg_state[REG_VOLUME_AB] & 0x07)
+    )
     assert reg_file(dut).envelope_control_reg.value.to_unsigned() == packed_envelope_control(reg_state[REG_ENVELOPE_CONTROL])
     assert reg_file(dut).envelope_period_reg.value.to_unsigned() == reg_state[REG_ENVELOPE_PERIOD]
 
@@ -217,34 +230,18 @@ def scale_sample_level(sample_value, level_value):
     if level_value == 0x0:
         return 0
     if level_value == 0x1:
-        return sample_value >> 4
-    if level_value == 0x2:
         return sample_value >> 3
-    if level_value == 0x3:
-        return (sample_value >> 3) + (sample_value >> 4)
-    if level_value == 0x4:
+    if level_value == 0x2:
         return sample_value >> 2
-    if level_value == 0x5:
-        return (sample_value >> 2) + (sample_value >> 4)
-    if level_value == 0x6:
+    if level_value == 0x3:
         return (sample_value >> 2) + (sample_value >> 3)
-    if level_value == 0x7:
-        return (sample_value >> 2) + (sample_value >> 3) + (sample_value >> 4)
-    if level_value == 0x8:
+    if level_value == 0x4:
         return sample_value >> 1
-    if level_value == 0x9:
-        return (sample_value >> 1) + (sample_value >> 4)
-    if level_value == 0xA:
+    if level_value == 0x5:
         return (sample_value >> 1) + (sample_value >> 3)
-    if level_value == 0xB:
-        return (sample_value >> 1) + (sample_value >> 3) + (sample_value >> 4)
-    if level_value == 0xC:
+    if level_value == 0x6:
         return (sample_value >> 1) + (sample_value >> 2)
-    if level_value == 0xD:
-        return (sample_value >> 1) + (sample_value >> 2) + (sample_value >> 4)
-    if level_value == 0xE:
-        return (sample_value >> 1) + (sample_value >> 2) + (sample_value >> 3)
-    if level_value == 0xF:
+    if level_value == 0x7:
         return sample_value
     return 0
 
@@ -389,15 +386,6 @@ async def set_channel_b(dut, note_value, control_value):
     await spi_write_reg(dut, REG_CHANNEL_B_CONTROL, control_value)
 
 
-async def wait_for_condition(dut, condition, max_cycles=512):
-    for _ in range(max_cycles):
-        await RisingEdge(dut.clk)
-        if condition():
-            return
-
-    raise AssertionError("condition was not met within the expected time")
-
-
 async def drive_idle_bus_activity(dut, byte_values, half_period_ns=SPI_MIN_HALF_PERIOD_NS):
     bus_flags = new_bus_flags()
 
@@ -442,8 +430,7 @@ async def test_write_only_spi_keeps_uio_quiet(dut):
         (REG_CHANNEL_A_CONTROL, 0x24),
         (REG_NOTE_B, 0x33),
         (REG_CHANNEL_B_CONTROL, 0x2C),
-        (REG_VOLUME_AB, 0x93),
-        (REG_NOISE_CONTROL, 0x07),
+        (REG_VOLUME_AB, 0x53),
         (REG_ENVELOPE_CONTROL, 0xFF),
         (REG_ENVELOPE_PERIOD, 0x08),
     ):
@@ -696,7 +683,7 @@ async def test_note_path_gate_and_rest_are_cleanly_muted(dut):
     await spi_write_reg(dut, REG_CONTROL, 0x01)
     await set_channel_a(dut, note_value=0x10, control_value=0x24, volume_value=0x0F)
 
-    expected_step = 22 << 1
+    expected_step = 11 << 1
     assert gen_top(dut).channel_a_phase_step.value.to_unsigned() == expected_step
 
     phase_before = gen_top(dut).channel_a_phase_value.value.to_unsigned()
@@ -738,7 +725,7 @@ async def test_control_outputs_follow_register_writes(dut):
     assert int(reg_file(dut).control_reg.value) == 1
 
     await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0D)
-    assert reg_file(dut).envelope_control_reg.value.to_unsigned() == 0x05
+    assert reg_file(dut).envelope_control_reg.value.to_unsigned() == 0x03
 
     await spi_write_reg(dut, REG_CONTROL, 0x03)
     await ClockCycles(dut.clk, 2)
@@ -757,15 +744,15 @@ async def test_note_lut_and_phase_accumulator_values(dut):
 
     await spi_write_reg(dut, REG_NOTE_A, 0x00)
     await ClockCycles(dut.clk, 2)
-    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 22
+    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 11
 
     await spi_write_reg(dut, REG_NOTE_A, 0x10)
     await ClockCycles(dut.clk, 2)
-    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 44
+    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == 22
 
     await spi_write_reg(dut, REG_NOTE_A, 0x2B)
     await ClockCycles(dut.clk, 2)
-    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == (41 << 2)
+    assert note_lut_a(dut).phase_step_o.value.to_unsigned() == (21 << 2)
 
     await spi_write_reg(dut, REG_NOTE_A, 0x8F)
     await ClockCycles(dut.clk, 2)
@@ -782,7 +769,7 @@ async def test_note_lut_and_phase_accumulator_values(dut):
         await RisingEdge(dut.clk)
         phase_values.append(phase_accumulator_a(dut).phase_value_o.value.to_unsigned())
     phase_steps = [right - left for left, right in zip(phase_values, phase_values[1:])]
-    assert phase_steps == [44, 44, 44, 44]
+    assert phase_steps == [22, 22, 22, 22]
 
     await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x04)
     frozen_phase = phase_accumulator_a(dut).phase_value_o.value.to_unsigned()
@@ -840,40 +827,6 @@ async def test_waveform_generator_builds_all_shapes(dut):
 
 
 @cocotb.test()
-async def test_noise_generator_enable_clear_and_disable(dut):
-    await start_test_clock(dut)
-    await apply_reset(dut)
-
-    if not audio_hierarchy_is_visible(dut):
-        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
-        return
-
-    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x28)
-    await spi_write_reg(dut, REG_NOISE_CONTROL, 0x03)
-    await spi_write_reg(dut, REG_CONTROL, 0x01)
-
-    noise_bits = []
-    noise_samples = []
-    for _ in range(128):
-        await RisingEdge(dut.clk)
-        noise_bits.append(int(noise_block(dut).noise_bit_o.value))
-        noise_samples.append(noise_block(dut).noise_sample_o.value.to_signed())
-
-    assert len(set(noise_bits)) > 1
-    assert any(value != 0 for value in noise_samples)
-
-    await spi_write_reg(dut, REG_NOISE_CONTROL, 0x00)
-    await ClockCycles(dut.clk, 4)
-    assert int(gen_top(dut).channel_a_noise_enable.value) == 0
-    assert noise_block(dut).noise_sample_o.value.to_signed() == 0
-
-    await spi_write_reg(dut, REG_CONTROL, 0x03)
-    await ClockCycles(dut.clk, 2)
-    assert noise_block(dut).lfsr_reg.value.to_unsigned() == 0x0001
-    assert noise_block(dut).divider_reg.value.to_unsigned() == 3
-
-
-@cocotb.test()
 async def test_envelope_generator_modes_and_restart(dut):
     await start_test_clock(dut)
     await apply_reset(dut)
@@ -885,48 +838,26 @@ async def test_envelope_generator_modes_and_restart(dut):
     await spi_write_reg(dut, REG_CONTROL, 0x01)
     await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x01)
 
-    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0C)
-    hold_levels = []
-    for _ in range(8):
+    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x08)
+    square_levels = []
+    for _ in range(32):
         await RisingEdge(dut.clk)
-        hold_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
-    assert hold_levels == [0xF] * 8
+        square_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
+    assert set(square_levels) == {0, 7}
+
+    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x09)
+    saw_levels = []
+    for _ in range(24):
+        await RisingEdge(dut.clk)
+        saw_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
+    assert min(saw_levels) == 0
+    assert max(saw_levels) == 7
+    assert any(left > right for left, right in zip(saw_levels, saw_levels[1:]))
+    assert any((left == 0 and right == 7) for left, right in zip(saw_levels, saw_levels[1:]))
 
     await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0D)
-    decay_levels = []
-    for _ in range(8):
-        await RisingEdge(dut.clk)
-        decay_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
-    assert decay_levels[0] >= decay_levels[-1]
-    assert all(left >= right for left, right in zip(decay_levels, decay_levels[1:]))
-    assert decay_levels[-1] < 0xF
-
-    rise_fall_write = cocotb.start_soon(spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0E))
-    rise_fall_levels = []
-    for _ in range(256):
-        await RisingEdge(dut.clk)
-        rise_fall_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
-    await rise_fall_write
-    rise_fall_start = rise_fall_levels.index(min(rise_fall_levels))
-    rise_fall_tail = rise_fall_levels[rise_fall_start:]
-    rise_fall_steps = [right - left for left, right in zip(rise_fall_tail, rise_fall_tail[1:])]
-    assert max(rise_fall_tail) > min(rise_fall_tail)
-    assert any(step > 0 for step in rise_fall_steps)
-    assert any(step < 0 for step in rise_fall_steps)
-
-    loop_write = cocotb.start_soon(spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0F))
-    loop_levels = []
-    for _ in range(320):
-        await RisingEdge(dut.clk)
-        loop_levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
-    await loop_write
-    loop_start = loop_levels.index(min(loop_levels))
-    loop_tail = loop_levels[loop_start:]
-    level_steps = [right - left for left, right in zip(loop_tail, loop_tail[1:])]
-    assert min(loop_tail) == 0
-    assert max(loop_tail) == 0xF
-    assert any(step > 0 for step in level_steps)
-    assert any(step < 0 for step in level_steps)
+    await ClockCycles(dut.clk, 2)
+    assert envelope_block(dut).envelope_level_o.value.to_unsigned() == 7
 
 
 @cocotb.test()
@@ -963,26 +894,6 @@ async def test_volume_control_and_mixer_follow_levels(dut):
         envelope_level = envelope_block(dut).envelope_level_o.value.to_unsigned()
         channel_a_scaled = volume_a(dut).sample_out_o.value.to_signed()
         assert channel_a_scaled == scale_sample_level(channel_a_source, envelope_level)
-
-    await apply_reset(dut)
-    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
-    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x2C)
-    await spi_write_reg(dut, REG_NOTE_B, 0x7B)
-    await spi_write_reg(dut, REG_CHANNEL_B_CONTROL, 0x2C)
-    await spi_write_reg(dut, REG_VOLUME_AB, 0xFF)
-    await spi_write_reg(dut, REG_NOISE_CONTROL, 0x03)
-    await spi_write_reg(dut, REG_CONTROL, 0x01)
-
-    await wait_for_condition(
-        dut,
-        lambda: mixer_block(dut).mixed_sample_o.value.to_signed() == 255,
-        max_cycles=4096,
-    )
-    await wait_for_condition(
-        dut,
-        lambda: mixer_block(dut).mixed_sample_o.value.to_signed() == -256,
-        max_cycles=4096,
-    )
 
 
 @cocotb.test()
@@ -1035,11 +946,11 @@ async def test_channel_b_envelope_enable_and_hard_mute(dut):
     await spi_write_reg(dut, REG_CONTROL, 0x01)
     await spi_write_reg(dut, REG_NOTE_B, 0x7B)
     await spi_write_reg(dut, REG_CHANNEL_B_CONTROL, 0x34)
-    await spi_write_reg(dut, REG_VOLUME_AB, 0xF0)
+    await spi_write_reg(dut, REG_VOLUME_AB, 0x70)
     await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x20)
     await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x15)
 
-    assert reg_file(dut).envelope_control_reg.value.to_unsigned() == 0x09
+    assert reg_file(dut).envelope_control_reg.value.to_unsigned() == 0x05
     assert int(gen_top(dut).channel_b_envelope_enable_o.value) == 1
 
     scaled_samples = []

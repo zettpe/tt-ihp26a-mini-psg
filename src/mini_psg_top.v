@@ -20,13 +20,12 @@ module mini_psg_top (
 
   wire       clear_enable;
   wire       audio_enable;
-  wire [7:0] note_a_value;
-  wire [7:0] channel_a_control_value;
-  wire [7:0] note_b_value;
-  wire [7:0] channel_b_control_value;
-  wire [7:0] volume_ab_value;
-  wire [7:0] noise_control_value;
-  wire [7:0] envelope_control_value;
+  wire [6:0] note_a_value;
+  wire [4:0] channel_a_control_value;
+  wire [6:0] note_b_value;
+  wire [4:0] channel_b_control_value;
+  wire [5:0] volume_ab_value;
+  wire [2:0] envelope_control_value;
   wire [7:0] envelope_period_value;
   wire       envelope_restart_pulse;
 
@@ -43,7 +42,6 @@ module mini_psg_top (
     .note_b_value_o           (note_b_value),
     .channel_b_control_value_o(channel_b_control_value),
     .volume_ab_value_o        (volume_ab_value),
-    .noise_control_value_o    (noise_control_value),
     .envelope_control_value_o (envelope_control_value),
     .envelope_period_value_o  (envelope_period_value),
     .envelope_restart_pulse_o (envelope_restart_pulse)
@@ -60,7 +58,6 @@ module mini_psg_top (
     .note_b_value_i            (note_b_value),
     .channel_b_control_value_i (channel_b_control_value),
     .volume_ab_value_i         (volume_ab_value),
-    .noise_control_value_i     (noise_control_value),
     .envelope_control_value_i  (envelope_control_value),
     .envelope_period_value_i   (envelope_period_value),
     .envelope_restart_pulse_i  (envelope_restart_pulse),

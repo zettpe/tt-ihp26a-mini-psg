@@ -18,8 +18,8 @@ module mini_psg_audio_output_top (
   input  wire              clear_enable_i,
   input  wire              audio_enable_i,
   input  wire              hard_mute_i,
-  input  wire [7:0]        volume_ab_value_i,
-  input  wire [3:0]        envelope_level_i,
+  input  wire [5:0]        volume_ab_value_i,
+  input  wire [2:0]        envelope_level_i,
   input  wire signed [8:0] channel_a_source_sample_i,
   input  wire signed [8:0] channel_b_source_sample_i,
   input  wire              channel_a_envelope_enable_i,
@@ -35,7 +35,7 @@ module mini_psg_audio_output_top (
   // Apply the selected fixed level or envelope level
   volume_control volume_control_a_u (
     .sample_in_i       (channel_a_source_sample_i),
-    .volume_level_i    (volume_ab_value_i[3:0]),
+    .volume_level_i    (volume_ab_value_i[2:0]),
     .envelope_level_i  (envelope_level_i),
     .envelope_enable_i (channel_a_envelope_enable_i),
     .sample_out_o      (channel_a_scaled_sample)
@@ -43,7 +43,7 @@ module mini_psg_audio_output_top (
 
   volume_control volume_control_b_u (
     .sample_in_i       (channel_b_source_sample_i),
-    .volume_level_i    (volume_ab_value_i[7:4]),
+    .volume_level_i    (volume_ab_value_i[5:3]),
     .envelope_level_i  (envelope_level_i),
     .envelope_enable_i (channel_b_envelope_enable_i),
     .sample_out_o      (channel_b_scaled_sample)

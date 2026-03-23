@@ -28,7 +28,6 @@ project:
     - "note_lut.v"
     - "phase_accumulator.v"
     - "waveform_generator.v"
-    - "noise_generator.v"
     - "envelope_generator.v"
     - "volume_control.v"
     - "mixer.v"
