@@ -18,7 +18,7 @@ HARD_MUTE_SYNC_CYCLES = 2
 # SPI pin positions on the shared port
 SPI_CS_BIT = 0
 SPI_MOSI_BIT = 1
-SPI_SCK_BIT = 2
+SPI_SCK_BIT = 3
 
 # Register addresses used by the live write map
 REG_CONTROL = 0x0
