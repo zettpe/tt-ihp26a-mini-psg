@@ -21,6 +21,8 @@ module tt_um_zettpe_mini_psg (
   input  wire       rst_n
 );
 
+  localparam integer UI_HARD_MUTE_BIT = 0;
+
   localparam integer UIO_SPI_CS_N_BIT = 0;
   localparam integer UIO_SPI_MOSI_BIT = 1;
   localparam integer UIO_SPI_MISO_BIT = 2;
