@@ -1,16 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : dac_1bit.v
- * Author      : Peter Szentkuti
- * Description : 1 bit audio output block
+ * File   : dac_1bit.v
+ * Author : Peter Szentkuti
  *
- * Converts the mixed sample to a 1 bit delta sigma stream
+ * 1 bit audio output
+ *
+ * Turns the mixed sample into a delta sigma bit stream. Keeps the leftover
+ * difference in error_reg, adds it to the new sample and uses the sign of
+ * the sum to choose the next output bit.
+ * The feedback levels are +255 and -256:
+ *
+ * sum_wide = error_reg + sample_in_i
+ * audio_next = 1 when sum_wide >= 0, else 0
+ * feedback_level = +255 when audio_next = 1, else -256
+ * audio_o <= audio_next
+ * error_reg <= sum_wide - feedback_level
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Converts the mixed sample to the 1 bit audio stream
 module dac_1bit (
   input  wire              clk_i,
   input  wire              rst_ni,
@@ -28,7 +37,8 @@ module dac_1bit (
   wire               audio_next = (sum_wide >= 11'sd0);
   wire signed [10:0] feedback_level = audio_next ? FEEDBACK_HIGH : FEEDBACK_LOW;
 
-  // Use the chosen output bit for the feedback level
+  // Register the next output bit and the new residual value, or clear both
+  // to the idle state when clear_enable_i is high
   always @(posedge clk_i or negedge rst_ni) begin : dac_state_ff
     if (!rst_ni) begin
       error_reg <= 11'sd0;

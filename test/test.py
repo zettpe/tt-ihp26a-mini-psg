@@ -153,6 +153,14 @@ def sample_bus_flags(dut, bus_flags):
     bus_flags["uio_enable_seen"] |= bool(uio_output_enable_value(dut))
 
 
+async def sample_signal_for_cycles(dut, signal_getter, cycle_count):
+    samples = []
+    for _ in range(cycle_count):
+        await RisingEdge(dut.clk)
+        samples.append(signal_getter())
+    return samples
+
+
 def assert_quiet_uio(bus_flags):
     assert not bus_flags["uio_output_seen"]
     assert not bus_flags["uio_enable_seen"]
@@ -523,6 +531,65 @@ async def test_audio_output_follows_spi_writes_and_hard_mute(dut):
 
 
 @cocotb.test()
+async def test_hard_mute_clears_dac_state_before_release(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+    await set_channel_a(dut, note_value=0x7B, control_value=0x24, volume_value=0x0F)
+
+    raw_before_mute = await sample_signal_for_cycles(
+        dut,
+        lambda: int(dac_block(dut).audio_o.value),
+        128,
+    )
+    assert len(set(raw_before_mute)) > 1
+
+    dut.ui_in.value = 0x01
+    await ReadOnly()
+    assert audio_value(dut) == 0
+
+    await ClockCycles(dut.clk, 4)
+
+    muted_top_samples = []
+    muted_raw_samples = []
+    muted_error_values = []
+    for _ in range(32):
+        await RisingEdge(dut.clk)
+        muted_top_samples.append(audio_value(dut))
+        muted_raw_samples.append(int(dac_block(dut).audio_o.value))
+        muted_error_values.append(dac_block(dut).error_reg.value.to_signed())
+
+    assert set(muted_top_samples) == {0}
+    assert set(muted_raw_samples) == {0}
+    assert set(muted_error_values) == {0}
+
+    dut.ui_in.value = 0x00
+    await ReadOnly()
+
+    resumed_top_samples = []
+    resumed_raw_samples = []
+    for _ in range(8):
+        await RisingEdge(dut.clk)
+        resumed_top_samples.append(audio_value(dut))
+        resumed_raw_samples.append(int(dac_block(dut).audio_o.value))
+
+    assert resumed_top_samples[:2] == [0, 0]
+    assert resumed_top_samples == resumed_raw_samples
+
+    activity_after_release = await sample_signal_for_cycles(
+        dut,
+        lambda: audio_value(dut),
+        128,
+    )
+    assert len(set(activity_after_release)) > 1
+
+
+@cocotb.test()
 async def test_spi_single_frame_ignores_extra_bytes(dut):
     await start_test_clock(dut)
     await apply_reset(dut)
@@ -639,6 +706,52 @@ async def test_spi_ignores_activity_while_cs_high(dut):
 
 
 @cocotb.test()
+async def test_unmapped_write_addresses_are_ignored(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not control_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only control check because the internal control hierarchy is not visible")
+        return
+
+    reg_state = new_reg_state()
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x2A)
+    apply_reg_write(reg_state, REG_NOTE_A, 0x2A)
+    assert_control_state_matches(dut, reg_state)
+
+    for address in (0x6, 0x9, 0xA, 0xE, 0xF):
+        await spi_write_reg(dut, address, 0xFF)
+        assert_control_state_matches(dut, reg_state)
+
+
+@cocotb.test()
+async def test_write_masks_unused_bits_before_store(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not control_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only control check because the internal control hierarchy is not visible")
+        return
+
+    reg_state = new_reg_state()
+
+    for address, data in (
+        (REG_CONTROL, 0x05),
+        (REG_NOTE_A, 0xFF),
+        (REG_CHANNEL_A_CONTROL, 0xFF),
+        (REG_NOTE_B, 0xFF),
+        (REG_CHANNEL_B_CONTROL, 0xFF),
+        (REG_VOLUME_AB, 0xFF),
+        (REG_ENVELOPE_CONTROL, 0xFF),
+        (REG_ENVELOPE_PERIOD, 0xFF),
+    ):
+        await spi_write_reg(dut, address, data)
+        apply_reg_write(reg_state, address, data)
+        assert_control_state_matches(dut, reg_state)
+
+
+@cocotb.test()
 async def test_random_legal_spi_traffic_matches_register_model(dut):
     await start_test_clock(dut)
     await apply_reset(dut)
@@ -731,6 +844,45 @@ async def test_control_outputs_follow_register_writes(dut):
     await ClockCycles(dut.clk, 2)
     assert int(ctrl_top(dut).audio_enable_o.value) == 0
     assert int(reg_file(dut).control_reg.value) == 0
+
+
+@cocotb.test()
+async def test_control_pulses_are_single_cycle(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not control_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only control check because the internal control hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+
+    clear_task = cocotb.start_soon(spi_write_reg(dut, REG_CONTROL, 0x03))
+    clear_samples = await sample_signal_for_cycles(
+        dut,
+        lambda: int(ctrl_top(dut).clear_enable_o.value),
+        260,
+    )
+    await clear_task
+
+    assert sum(clear_samples) == 1
+    assert int(ctrl_top(dut).clear_enable_o.value) == 0
+    assert int(ctrl_top(dut).audio_enable_o.value) == 0
+    assert int(reg_file(dut).control_reg.value) == 0
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+
+    restart_task = cocotb.start_soon(spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x0D))
+    restart_samples = await sample_signal_for_cycles(
+        dut,
+        lambda: int(ctrl_top(dut).envelope_restart_pulse_o.value),
+        260,
+    )
+    await restart_task
+
+    assert sum(restart_samples) == 1
+    assert int(ctrl_top(dut).envelope_restart_pulse_o.value) == 0
+    assert reg_file(dut).envelope_control_reg.value.to_unsigned() == 0x03
 
 
 @cocotb.test()
@@ -861,6 +1013,29 @@ async def test_envelope_generator_modes_and_restart(dut):
 
 
 @cocotb.test()
+async def test_envelope_period_zero_steps_every_clock(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+    await spi_write_reg(dut, REG_ENVELOPE_PERIOD, 0x00)
+    await spi_write_reg(dut, REG_ENVELOPE_CONTROL, 0x01)
+
+    levels = []
+    for _ in range(12):
+        await RisingEdge(dut.clk)
+        levels.append(envelope_block(dut).envelope_level_o.value.to_unsigned())
+
+    for left, right in zip(levels, levels[1:]):
+        expected_right = 7 if left == 0 else left - 1
+        assert right == expected_right
+
+
+@cocotb.test()
 async def test_volume_control_and_mixer_follow_levels(dut):
     await start_test_clock(dut)
     await apply_reset(dut)
@@ -897,6 +1072,31 @@ async def test_volume_control_and_mixer_follow_levels(dut):
 
 
 @cocotb.test()
+async def test_two_channel_mix_reaches_live_range_limits(dut):
+    await start_test_clock(dut)
+    await apply_reset(dut)
+
+    if not audio_hierarchy_is_visible(dut):
+        dut._log.info("Skipping RTL only audio check because the internal audio hierarchy is not visible")
+        return
+
+    await spi_write_reg(dut, REG_NOTE_A, 0x7B)
+    await spi_write_reg(dut, REG_CHANNEL_A_CONTROL, 0x26)
+    await spi_write_reg(dut, REG_NOTE_B, 0x7B)
+    await spi_write_reg(dut, REG_CHANNEL_B_CONTROL, 0x26)
+    await spi_write_reg(dut, REG_VOLUME_AB, 0x77)
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+
+    mixed_values = []
+    for _ in range(4096):
+        await RisingEdge(dut.clk)
+        mixed_values.append(mixer_block(dut).mixed_sample_o.value.to_signed())
+
+    assert min(mixed_values) == -256
+    assert max(mixed_values) == 254
+
+
+@cocotb.test()
 async def test_dac_and_audio_output_drive_activity(dut):
     await start_test_clock(dut)
     await apply_reset(dut)
@@ -928,6 +1128,16 @@ async def test_dac_and_audio_output_drive_activity(dut):
     assert audio_value(dut) == 0
 
     await set_ui_value(dut, 0x00)
+    await spi_write_reg(dut, REG_CONTROL, 0x00)
+    await ClockCycles(dut.clk, 4)
+    assert audio_value(dut) == 0
+    assert int(dac_block(dut).audio_o.value) == 0
+    assert dac_block(dut).error_reg.value.to_signed() == 0
+
+    await spi_write_reg(dut, REG_CONTROL, 0x01)
+    resumed_audio = await sample_signal_for_cycles(dut, lambda: audio_value(dut), 64)
+    assert len(set(resumed_audio)) > 1
+
     await spi_write_reg(dut, REG_CONTROL, 0x03)
     await ClockCycles(dut.clk, 2)
     assert audio_value(dut) == 0

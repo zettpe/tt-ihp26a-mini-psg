@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * File        : mini_psg_audio_output_top.v
- * Author      : Peter Szentkuti
- * Description : Level mix and audio output block
+ * File   : mini_psg_audio_output_top.v
+ * Author : Peter Szentkuti
  *
- * Scales the channel source samples, mixes them and builds the
- * 1 bit audio output
+ * Audio output path wrapper
+ *
+ * Applies the selected channel volume or the shared envelope level, mixes
+ * both channels and drives the 1 bit audio output. Hard mute gates the
+ * output pin at once and clears the DAC state through a synchronized copy.
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Scales mixes and sends the final audio output
 module mini_psg_audio_output_top (
   input  wire              clk_i,
   input  wire              rst_ni,
@@ -31,8 +32,21 @@ module mini_psg_audio_output_top (
   wire signed [9:0] channel_b_scaled_sample;
   wire signed [8:0] mixed_sample;
   wire              audio_raw;
+  reg  [1:0]        hard_mute_sync_q;
+  wire              hard_mute_sync = hard_mute_sync_q[1];
+  wire              dac_clear = clear_enable_i || !audio_enable_i || hard_mute_sync;
 
-  // Apply the selected fixed level or envelope level
+  // Synchronize hard mute for the internal DAC clear path while the top pin
+  // still uses the raw mute input for an immediate mute response
+  always @(posedge clk_i or negedge rst_ni) begin : hard_mute_sync_ff
+    if (!rst_ni) begin
+      hard_mute_sync_q <= 2'b00;
+    end else begin
+      hard_mute_sync_q <= {hard_mute_sync_q[0], hard_mute_i};
+    end
+  end
+
+  // Scale each channel with fixed volume or the shared envelope level
   volume_control volume_control_a_u (
     .sample_in_i       (channel_a_source_sample_i),
     .volume_level_i    (volume_ab_value_i[2:0]),
@@ -49,21 +63,23 @@ module mini_psg_audio_output_top (
     .sample_out_o      (channel_b_scaled_sample)
   );
 
-  // Mix both scaled channels and send the result to the 1 bit output block
+  // Mix both scaled channels and convert the result to 1 bit audio
   mixer mixer_u (
     .channel_a_sample_i(channel_a_scaled_sample),
     .channel_b_sample_i(channel_b_scaled_sample),
     .mixed_sample_o    (mixed_sample)
   );
 
+  // Clear the DAC on global clear, audio disable or synchronized hard mute
   dac_1bit dac_1bit_u (
     .clk_i         (clk_i),
     .rst_ni        (rst_ni),
-    .clear_enable_i(clear_enable_i),
+    .clear_enable_i(dac_clear),
     .sample_in_i   (mixed_sample),
     .audio_o       (audio_raw)
   );
 
+  // Gate the output pin with hard mute and audio enable
   assign audio_o = (hard_mute_i || !audio_enable_i) ? 1'b0 : audio_raw;
 
 endmodule // mini_psg_audio_output_top
