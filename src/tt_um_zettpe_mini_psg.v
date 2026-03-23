@@ -30,6 +30,19 @@ module tt_um_zettpe_mini_psg (
   localparam integer UIO_SPI_MOSI_BIT = 1;
   localparam integer UIO_SPI_SCK_BIT = 2;
 
+  reg  [1:0] rst_sync_q;
+  wire       rst_core_ni = rst_sync_q[1];
+
+  // Assert reset from the TT pin at once and release the internal core
+  // reset on clk after two clean cycles
+  always @(posedge clk or negedge rst_n) begin : rst_sync_ff
+    if (!rst_n) begin
+      rst_sync_q <= 2'b00;
+    end else begin
+      rst_sync_q <= {rst_sync_q[0], 1'b1};
+    end
+  end
+
   // Decode the SPI and audio pins from the wrapper ports
   wire spi_cs_ni = uio_in[UIO_SPI_CS_N_BIT];
   wire spi_mosi_i = uio_in[UIO_SPI_MOSI_BIT];
@@ -38,7 +51,7 @@ module tt_um_zettpe_mini_psg (
 
   mini_psg_top mini_psg_top_u (
     .clk_i      (clk),
-    .rst_ni     (rst_n),
+    .rst_ni     (rst_core_ni),
     .spi_cs_ni  (spi_cs_ni),
     .spi_sck_i  (spi_sck_i),
     .spi_mosi_i (spi_mosi_i),

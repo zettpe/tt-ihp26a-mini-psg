@@ -4,6 +4,10 @@ Mini PSG is a retro inspired programmable sound generator. It has two tone chann
 
 Each channel uses a `23` bit phase accumulator. The phase value sets the pitch and drives the selected waveform. The shared envelope shapes the level of either channel.
 
+All internal sequential logic runs on the project `clk`. The design does not create derived clocks. `SPI_CS_N`, `SPI_MOSI` and `SPI_SCK` are sampled into that `clk` domain, and Tiny Tapeout `rst_n` asserts reset at once but releases the internal core reset after two clean `clk` cycles.
+
+Hard mute drives the top audio pin low at once. A synchronized internal mute copy also clears the `1` bit DAC state, and audio disable uses the same clear path, so release comes back from the DAC idle state.
+
 ### Pin connections
 
 | Pin | Function |

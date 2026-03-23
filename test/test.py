@@ -71,6 +71,10 @@ def psg_top(dut):
     return dut.user_project_u.mini_psg_top_u
 
 
+def core_reset_n(dut):
+    return int(psg_top(dut).rst_ni.value)
+
+
 def ctrl_top(dut):
     return psg_top(dut).mini_psg_control_top_u
 
@@ -415,6 +419,44 @@ async def drive_idle_bus_activity(dut, byte_values, half_period_ns=SPI_MIN_HALF_
 async def test_reset_defaults_keep_outputs_quiet(dut):
     await start_test_clock(dut)
     await apply_reset(dut)
+
+    assert audio_value(dut) == 0
+    assert quiet_output_bits(dut) == 0
+    assert uio_output_value(dut) == 0
+    assert uio_output_enable_value(dut) == 0
+
+    if control_hierarchy_is_visible(dut):
+        assert_control_state_matches(dut, new_reg_state())
+
+
+@cocotb.test()
+async def test_internal_reset_release_is_synchronized_to_clk(dut):
+    await start_test_clock(dut)
+
+    dut.ena.value = 1
+    dut.ui_in.value = 0
+    set_spi_lines(dut, cs_n=1, sck=0, mosi=0)
+    dut.rst_n.value = 0
+
+    await ReadOnly()
+    assert core_reset_n(dut) == 0
+
+    await ClockCycles(dut.clk, 3)
+    await ReadOnly()
+    assert core_reset_n(dut) == 0
+
+    await Timer(1, unit="ns")
+    dut.rst_n.value = 1
+    await ReadOnly()
+    assert core_reset_n(dut) == 0
+
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+    assert core_reset_n(dut) == 0
+
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+    assert core_reset_n(dut) == 1
 
     assert audio_value(dut) == 0
     assert quiet_output_bits(dut) == 0
