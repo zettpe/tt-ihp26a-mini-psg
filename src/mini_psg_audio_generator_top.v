@@ -4,8 +4,8 @@
  * Author      : Peter Szentkuti
  * Description : Tone noise and envelope block
  *
- * Builds the channel source samples, the shared noise bit and the
- * envelope level from the stored register values
+ * Builds the channel source samples and the envelope level from
+ * the stored register values
  */
 
 `default_nettype none
@@ -25,18 +25,11 @@ module mini_psg_audio_generator_top (
   input  wire [7:0]        envelope_control_value_i,
   input  wire [7:0]        envelope_period_value_i,
   input  wire              envelope_restart_pulse_i,
-  output wire              shared_noise_bit_o,
   output wire [3:0]        envelope_level_o,
-  output wire              channel_a_tone_enable_o,
-  output wire              channel_b_tone_enable_o,
-  output wire              channel_a_noise_enable_o,
-  output wire              channel_b_noise_enable_o,
   output wire              channel_a_envelope_enable_o,
   output wire              channel_b_envelope_enable_o,
   output wire signed [8:0] channel_a_source_sample_o,
-  output wire signed [8:0] channel_b_source_sample_o,
-  output wire              channel_a_wave_debug_o,
-  output wire              channel_b_wave_debug_o
+  output wire signed [8:0] channel_b_source_sample_o
 );
 
   // CHANNEL_CONTROL bit fields
@@ -66,6 +59,7 @@ module mini_psg_audio_generator_top (
   wire [7:0]        channel_b_phase_view = channel_b_phase_value[23:16];
   wire signed [7:0] channel_a_wave_sample;
   wire signed [7:0] channel_b_wave_sample;
+  wire              shared_noise_bit;
   wire signed [7:0] shared_noise_sample;
   wire signed [7:0] channel_a_tone_sample;
   wire signed [7:0] channel_b_tone_sample;
@@ -74,6 +68,10 @@ module mini_psg_audio_generator_top (
   wire              channel_a_gate_on;
   wire              channel_b_gate_on;
   wire              noise_on;
+  wire              channel_a_tone_enable;
+  wire              channel_b_tone_enable;
+  wire              channel_a_noise_enable;
+  wire              channel_b_noise_enable;
 
   // Gate and enable bits decide which source parts are live
   assign channel_a_gate_on = audio_enable_i &&
@@ -83,16 +81,16 @@ module mini_psg_audio_generator_top (
   assign noise_on = audio_enable_i &&
       noise_control_value_i[NOISE_CONTROL_ENABLE_BIT];
 
-  assign channel_a_tone_enable_o = channel_a_gate_on &&
+  assign channel_a_tone_enable = channel_a_gate_on &&
       channel_a_control_value_i[CHANNEL_CONTROL_TONE_ENABLE_BIT] &&
       (channel_a_phase_step != 24'd0);
-  assign channel_b_tone_enable_o = channel_b_gate_on &&
+  assign channel_b_tone_enable = channel_b_gate_on &&
       channel_b_control_value_i[CHANNEL_CONTROL_TONE_ENABLE_BIT] &&
       (channel_b_phase_step != 24'd0);
-  assign channel_a_noise_enable_o = channel_a_gate_on &&
+  assign channel_a_noise_enable = channel_a_gate_on &&
       channel_a_control_value_i[CHANNEL_CONTROL_NOISE_ENABLE_BIT] &&
       noise_on;
-  assign channel_b_noise_enable_o = channel_b_gate_on &&
+  assign channel_b_noise_enable = channel_b_gate_on &&
       channel_b_control_value_i[CHANNEL_CONTROL_NOISE_ENABLE_BIT] &&
       noise_on;
   assign channel_a_envelope_enable_o =
@@ -159,7 +157,7 @@ module mini_psg_audio_generator_top (
     .noise_enable_i(noise_on),
     .rate_select_i (noise_control_value_i[
         NOISE_CONTROL_RATE_MSB:NOISE_CONTROL_RATE_LSB]),
-    .noise_bit_o   (shared_noise_bit_o),
+    .noise_bit_o   (shared_noise_bit),
     .noise_sample_o(shared_noise_sample)
   );
 
@@ -177,13 +175,13 @@ module mini_psg_audio_generator_top (
 
   // Add the enabled tone and noise parts for each channel
   assign channel_a_tone_sample =
-      channel_a_tone_enable_o ? channel_a_wave_sample : 8'sd0;
+      channel_a_tone_enable ? channel_a_wave_sample : 8'sd0;
   assign channel_b_tone_sample =
-      channel_b_tone_enable_o ? channel_b_wave_sample : 8'sd0;
+      channel_b_tone_enable ? channel_b_wave_sample : 8'sd0;
   assign channel_a_noise_sample =
-      channel_a_noise_enable_o ? shared_noise_sample : 8'sd0;
+      channel_a_noise_enable ? shared_noise_sample : 8'sd0;
   assign channel_b_noise_sample =
-      channel_b_noise_enable_o ? shared_noise_sample : 8'sd0;
+      channel_b_noise_enable ? shared_noise_sample : 8'sd0;
   assign channel_a_source_sample_o =
       $signed({channel_a_tone_sample[7], channel_a_tone_sample}) +
       $signed({channel_a_noise_sample[7], channel_a_noise_sample});
@@ -191,17 +189,14 @@ module mini_psg_audio_generator_top (
       $signed({channel_b_tone_sample[7], channel_b_tone_sample}) +
       $signed({channel_b_noise_sample[7], channel_b_noise_sample});
 
-  // Keep simple one bit views for the debug outputs
-  assign channel_a_wave_debug_o = channel_a_wave_sample[7];
-  assign channel_b_wave_debug_o = channel_b_wave_sample[7];
-
-  // These stored bits are reserved in this build
+  // These stored bits are not used now
   wire unused_control_bits = &{
     channel_a_control_value_i[7:6],
     channel_b_control_value_i[7:6],
     noise_control_value_i[7:4],
     envelope_control_value_i[7:5],
     envelope_control_value_i[2],
+    shared_noise_bit,
     channel_a_phase_value[15:0],
     channel_b_phase_value[15:0],
     1'b0

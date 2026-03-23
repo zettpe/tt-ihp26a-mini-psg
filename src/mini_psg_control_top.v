@@ -2,10 +2,10 @@
 /*
  * File        : mini_psg_control_top.v
  * Author      : Peter Szentkuti
- * Description : SPI register block
+ * Description : SPI write block and register file
  *
- * Connects the SPI slave to the register file, sends the selected
- * register byte on MISO and sends the stored values to the audio block
+ * Connects the SPI slave to the register file and sends the stored
+ * values to the audio block
  */
 
 `default_nettype none
@@ -18,10 +18,6 @@ module mini_psg_control_top (
   input  wire       spi_cs_ni,
   input  wire       spi_sck_i,
   input  wire       spi_mosi_i,
-  output wire       spi_miso_o,
-  output wire       spi_miso_oe_o,
-  output wire       spi_access_pulse_o,
-  output wire       spi_read_active_o,
   output wire       clear_enable_o,
   output wire       audio_enable_o,
   output wire [7:0] note_a_value_o,
@@ -45,17 +41,7 @@ module mini_psg_control_top (
   wire [3:0] spi_write_address;
   wire [7:0] spi_write_data;
   wire       spi_write_enable;
-  wire [3:0] spi_read_address;
-  wire       spi_miso_data;
-  wire       spi_miso_output_enable;
-  wire [7:0] spi_read_data;
   wire [7:0] control_value;
-  wire       spi_miso_output_enable_safe;
-
-  // Release the shared MISO line as soon as CS_N goes high
-  assign spi_miso_o = spi_miso_data;
-  assign spi_miso_output_enable_safe = spi_miso_output_enable & ~spi_cs_ni;
-  assign spi_miso_oe_o = spi_miso_output_enable_safe;
 
   // Build the clear and envelope restart pulses from accepted writes
   assign clear_enable_o = spi_write_enable &&
@@ -72,15 +58,9 @@ module mini_psg_control_top (
     .spi_cs_ni            (spi_cs_ni),
     .spi_sck_i            (spi_sck_i),
     .spi_mosi_i           (spi_mosi_i),
-    .read_data_i          (spi_read_data),
     .write_address_o      (spi_write_address),
     .write_data_o         (spi_write_data),
-    .write_enable_o       (spi_write_enable),
-    .read_address_o       (spi_read_address),
-    .read_active_o        (spi_read_active_o),
-    .access_pulse_o       (spi_access_pulse_o),
-    .miso_data_o          (spi_miso_data),
-    .miso_output_enable_o (spi_miso_output_enable)
+    .write_enable_o       (spi_write_enable)
   );
 
   register_file register_file_u (
@@ -89,8 +69,6 @@ module mini_psg_control_top (
     .write_enable_i           (spi_write_enable),
     .write_address_i          (spi_write_address),
     .write_data_i             (spi_write_data),
-    .read_address_i           (spi_read_address),
-    .read_data_o              (spi_read_data),
     .control_value_o          (control_value),
     .note_a_value_o           (note_a_value_o),
     .channel_a_control_value_o(channel_a_control_value_o),

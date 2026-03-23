@@ -2,25 +2,22 @@
 /*
  * File        : register_file.v
  * Author      : Peter Szentkuti
- * Description : Register file with write masking
+ * Description : Register file with stored control values
  *
- * Stores register values, keeps the write masks and
- * returns the selected byte for the given read address
+ * Stores the register values and keeps the write masks used by
+ * the live audio path
  */
 
 `default_nettype none
 `timescale 1ns / 1ps
 
 // Store register values
-// Unmapped addresses return all 0s
 module register_file (
   input  wire       clk_i,
   input  wire       rst_ni,
   input  wire       write_enable_i,
   input  wire [3:0] write_address_i,
   input  wire [7:0] write_data_i,
-  input  wire [3:0] read_address_i,
-  output reg  [7:0] read_data_o,
   output wire [7:0] control_value_o,
   output wire [7:0] note_a_value_o,
   output wire [7:0] channel_a_control_value_o,
@@ -42,8 +39,6 @@ module register_file (
   localparam [3:0] ADDR_NOISE_CONTROL = 4'h6;
   localparam [3:0] ADDR_ENVELOPE_CONTROL = 4'h7;
   localparam [3:0] ADDR_ENVELOPE_PERIOD = 4'h8;
-  localparam [3:0] ADDR_STATUS = 4'h9;
-  localparam [3:0] ADDR_ID = 4'ha;
 
   // ENVELOPE_CONTROL bits used now
   localparam integer ENVELOPE_MODE_LSB = 0;
@@ -59,7 +54,6 @@ module register_file (
   localparam [3:0] DEFAULT_NOISE_CONTROL_REG = 4'h0;
   localparam [3:0] DEFAULT_ENVELOPE_CONTROL_REG = 4'h0;
   localparam [7:0] DEFAULT_ENVELOPE_PERIOD_REG = 8'h10;
-  localparam [7:0] ID_REG_VALUE = 8'hdf;
 
   // Store only the bits that are used now
   reg       control_reg;
@@ -71,10 +65,8 @@ module register_file (
   reg [3:0] noise_control_reg;
   reg [3:0] envelope_control_reg;
   reg [7:0] envelope_period_reg;
-  // STATUS[2] shows that one valid write has been accepted
-  reg       write_seen_reg;
 
-  // Build the full read values from the stored bits
+  // Build the full control values from the stored bits
   assign control_value_o = {7'b0000000, control_reg};
   assign note_a_value_o = {1'b0, note_a_reg};
   assign channel_a_control_value_o = {2'b00, channel_a_control_reg};
@@ -103,11 +95,8 @@ module register_file (
       noise_control_reg <= DEFAULT_NOISE_CONTROL_REG;
       envelope_control_reg <= DEFAULT_ENVELOPE_CONTROL_REG;
       envelope_period_reg <= DEFAULT_ENVELOPE_PERIOD_REG;
-      write_seen_reg <= 1'b0;
     end else begin
       if (write_enable_i) begin
-        write_seen_reg <= 1'b1;
-
         case (write_address_i)
           ADDR_CONTROL: begin
             // Store CONTROL[0] and keep the pulse bit at 0
@@ -124,7 +113,6 @@ module register_file (
               noise_control_reg <= DEFAULT_NOISE_CONTROL_REG;
               envelope_control_reg <= DEFAULT_ENVELOPE_CONTROL_REG;
               envelope_period_reg <= DEFAULT_ENVELOPE_PERIOD_REG;
-              write_seen_reg <= 1'b0;
             end
           end
           ADDR_NOTE_A: begin
@@ -161,50 +149,6 @@ module register_file (
         endcase
       end
     end
-  end
-
-  // Return the byte selected by the read address
-  always @* begin : read_data_comb
-    read_data_o = 8'h00;
-
-    case (read_address_i)
-      ADDR_CONTROL: begin
-        read_data_o = control_value_o;
-      end
-      ADDR_NOTE_A: begin
-        read_data_o = note_a_value_o;
-      end
-      ADDR_CHANNEL_A_CONTROL: begin
-        read_data_o = channel_a_control_value_o;
-      end
-      ADDR_NOTE_B: begin
-        read_data_o = note_b_value_o;
-      end
-      ADDR_CHANNEL_B_CONTROL: begin
-        read_data_o = channel_b_control_value_o;
-      end
-      ADDR_VOLUME_AB: begin
-        read_data_o = volume_ab_reg;
-      end
-      ADDR_NOISE_CONTROL: begin
-        read_data_o = noise_control_value_o;
-      end
-      ADDR_ENVELOPE_CONTROL: begin
-        read_data_o = envelope_control_value_o;
-      end
-      ADDR_ENVELOPE_PERIOD: begin
-        read_data_o = envelope_period_reg;
-      end
-      ADDR_STATUS: begin
-        read_data_o = {5'b00000, write_seen_reg, 2'b00};
-      end
-      ADDR_ID: begin
-        read_data_o = ID_REG_VALUE;
-      end
-      default: begin
-        read_data_o = 8'h00;
-      end
-    endcase
   end
 
 endmodule // register_file

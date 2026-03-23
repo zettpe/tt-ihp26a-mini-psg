@@ -10,12 +10,11 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Adds both channel samples and sets the saturation flag on limit hit
+// Adds both channel samples and limits the result to the audio range
 module mixer (
   input  wire signed [9:0] channel_a_sample_i,
   input  wire signed [9:0] channel_b_sample_i,
-  output reg  signed [8:0] mixed_sample_o,
-  output reg               saturation_flag_o
+  output reg  signed [8:0] mixed_sample_o
 );
 
   wire signed [10:0] sum_wide =
@@ -24,14 +23,10 @@ module mixer (
 
   always @* begin : mix_output_comb
     // Limit the mix to the 9 bit range used by the 1 bit output block
-    saturation_flag_o = 1'b0;
-
     if (sum_wide > 11'sd255) begin
       mixed_sample_o = 9'sd255;
-      saturation_flag_o = 1'b1;
     end else if (sum_wide < -11'sd256) begin
       mixed_sample_o = -9'sd256;
-      saturation_flag_o = 1'b1;
     end else begin
       mixed_sample_o = sum_wide[8:0];
     end

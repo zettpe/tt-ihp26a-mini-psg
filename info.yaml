@@ -48,19 +48,19 @@ pinout:
   ui[7]: "NOT_USED_7"
 
   # Outputs
-  uo[0]: "SATURATION"
-  uo[1]: "SPI_READ"
-  uo[2]: "SPI_ACCESS"
-  uo[3]: "ENVELOPE_DEBUG"
-  uo[4]: "NOISE_DEBUG"
-  uo[5]: "CHANNEL_B_DEBUG"
-  uo[6]: "CHANNEL_A_DEBUG"
+  uo[0]: "NOT_USED_0"
+  uo[1]: "NOT_USED_1"
+  uo[2]: "NOT_USED_2"
+  uo[3]: "NOT_USED_3"
+  uo[4]: "NOT_USED_4"
+  uo[5]: "NOT_USED_5"
+  uo[6]: "NOT_USED_6"
   uo[7]: "AUDIO"
 
   # Bidirectional pins
   uio[0]: "SPI_CS_N"
   uio[1]: "SPI_MOSI"
-  uio[2]: "SPI_MISO"
+  uio[2]: "NOT_USED_2"
   uio[3]: "SPI_SCK"
   uio[4]: "NOT_USED_4"
   uio[5]: "NOT_USED_5"

@@ -15,16 +15,7 @@ module mini_psg_top (
   input  wire       spi_sck_i,
   input  wire       spi_mosi_i,
   input  wire       hard_mute_i,
-  output wire       spi_miso_o,
-  output wire       spi_miso_oe_o,
-  output wire       audio_o,
-  output wire       channel_a_debug_o,
-  output wire       channel_b_debug_o,
-  output wire       noise_debug_o,
-  output wire       envelope_debug_o,
-  output wire       saturation_flag_o,
-  output wire       spi_access_pulse_o,
-  output wire       spi_read_active_o
+  output wire       audio_o
 );
 
   wire       clear_enable;
@@ -45,10 +36,6 @@ module mini_psg_top (
     .spi_cs_ni                (spi_cs_ni),
     .spi_sck_i                (spi_sck_i),
     .spi_mosi_i               (spi_mosi_i),
-    .spi_miso_o               (spi_miso_o),
-    .spi_miso_oe_o            (spi_miso_oe_o),
-    .spi_access_pulse_o       (spi_access_pulse_o),
-    .spi_read_active_o        (spi_read_active_o),
     .clear_enable_o           (clear_enable),
     .audio_enable_o           (audio_enable),
     .note_a_value_o           (note_a_value),
@@ -77,12 +64,7 @@ module mini_psg_top (
     .envelope_control_value_i  (envelope_control_value),
     .envelope_period_value_i   (envelope_period_value),
     .envelope_restart_pulse_i  (envelope_restart_pulse),
-    .audio_o                   (audio_o),
-    .channel_a_debug_o         (channel_a_debug_o),
-    .channel_b_debug_o         (channel_b_debug_o),
-    .noise_debug_o             (noise_debug_o),
-    .envelope_debug_o          (envelope_debug_o),
-    .saturation_flag_o         (saturation_flag_o)
+    .audio_o                   (audio_o)
   );
 
 endmodule // mini_psg_top

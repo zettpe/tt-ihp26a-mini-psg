@@ -25,61 +25,32 @@ module tt_um_zettpe_mini_psg (
 
   localparam integer UIO_SPI_CS_N_BIT = 0;
   localparam integer UIO_SPI_MOSI_BIT = 1;
-  localparam integer UIO_SPI_MISO_BIT = 2;
   localparam integer UIO_SPI_SCK_BIT = 3;
 
   wire spi_cs_ni = uio_in[UIO_SPI_CS_N_BIT];
   wire spi_mosi_i = uio_in[UIO_SPI_MOSI_BIT];
   wire spi_sck_i = uio_in[UIO_SPI_SCK_BIT];
-  wire spi_miso_o;
-  wire spi_miso_oe_o;
   wire audio_o;
-  wire channel_a_debug_o;
-  wire channel_b_debug_o;
-  wire noise_debug_o;
-  wire envelope_debug_o;
-  wire saturation_flag_o;
-  wire spi_access_pulse_o;
-  wire spi_read_active_o;
 
   mini_psg_top mini_psg_top_u (
-    .clk_i             (clk),
-    .rst_ni            (rst_n),
-    .spi_cs_ni         (spi_cs_ni),
-    .spi_sck_i         (spi_sck_i),
-    .spi_mosi_i        (spi_mosi_i),
-    .hard_mute_i       (ui_in[UI_HARD_MUTE_BIT]),
-    .spi_miso_o        (spi_miso_o),
-    .spi_miso_oe_o     (spi_miso_oe_o),
-    .audio_o           (audio_o),
-    .channel_a_debug_o (channel_a_debug_o),
-    .channel_b_debug_o (channel_b_debug_o),
-    .noise_debug_o     (noise_debug_o),
-    .envelope_debug_o  (envelope_debug_o),
-    .saturation_flag_o (saturation_flag_o),
-    .spi_access_pulse_o(spi_access_pulse_o),
-    .spi_read_active_o (spi_read_active_o)
+    .clk_i      (clk),
+    .rst_ni     (rst_n),
+    .spi_cs_ni  (spi_cs_ni),
+    .spi_sck_i  (spi_sck_i),
+    .spi_mosi_i (spi_mosi_i),
+    .hard_mute_i(ui_in[UI_HARD_MUTE_BIT]),
+    .audio_o    (audio_o)
   );
 
-  assign uo_out = {
-    audio_o,
-    channel_a_debug_o,
-    channel_b_debug_o,
-    noise_debug_o,
-    envelope_debug_o,
-    spi_access_pulse_o,
-    spi_read_active_o,
-    saturation_flag_o
-  };
-
-  assign uio_out = {5'b00000, spi_miso_o, 2'b00};
-  assign uio_oe = {5'b00000, spi_miso_oe_o, 2'b00};
+  assign uo_out = {audio_o, 7'b0000000};
+  assign uio_out = 8'b00000000;
+  assign uio_oe = 8'b00000000;
 
   wire unused_signals = &{
     ena,
     ui_in[7:1],
     uio_in[7:4],
-    uio_in[UIO_SPI_MISO_BIT],
+    uio_in[2],
     1'b0
   };
 
